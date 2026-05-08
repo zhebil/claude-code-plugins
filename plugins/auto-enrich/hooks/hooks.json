@@ -10,6 +10,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/compact-cleanup.mjs",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -26,18 +36,6 @@
     ],
     "PreCompact": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/compact-cleanup.mjs",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "compact",
         "hooks": [
           {
             "type": "command",
