@@ -16,7 +16,7 @@ Matches inside inline code or fenced code blocks are ignored. Each entity is enr
 The plugin uses local CLIs and silently skips entities that cannot be fetched:
 
 - `gh` authenticated for GitHub
-- `acli` authenticated for Jira
+- One of: `acli` (default) or `jira` (ankitpokhrel/jira-cli) authenticated for Jira
 - `sentry` authenticated for Sentry
 - Node.js available as `node`
 
@@ -71,14 +71,18 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
   "providers": {
     "github-issue": { "enabled": true },
     "github-repo":  { "enabled": true },
-    "jira":         { "enabled": true },
+    "jira":         { "enabled": true, "cli": "acli" },
     "sentry":       { "enabled": true }
   }
 }
 ```
 
-`enabled` defaults to `true` when omitted. A missing or invalid file
-falls back to defaults (every provider on).
+- `enabled` defaults to `true` when omitted.
+- `jira.cli` selects the Jira CLI: `"acli"` (default) or `"jira-cli"`
+  (ankitpokhrel/jira-cli, binary `jira`). Unknown values fall back to `acli`.
+
+A missing or invalid file falls back to defaults (every provider on,
+acli for jira).
 
 ## Test the hook directly
 

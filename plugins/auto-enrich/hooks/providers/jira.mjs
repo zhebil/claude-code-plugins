@@ -6,6 +6,8 @@ import { descriptionToMarkdown } from "../lib/adf.mjs";
 const URL_PATTERN = /https?:\/\/[\w.-]+\.atlassian\.net\/browse\/([A-Z][A-Z0-9]+-\d+)/g;
 const KEY_PATTERN = /(?<![\w-])([A-Z][A-Z0-9]+-\d+)(?![\w-])/g;
 
+const DEFAULT_BACKEND = "acli";
+
 /**
  * @typedef {Object} JiraMatch
  * @property {string} id Stable id like `jira:PROJ-123`.
@@ -13,13 +15,107 @@ const KEY_PATTERN = /(?<![\w-])([A-Z][A-Z0-9]+-\d+)(?![\w-])/g;
  */
 
 /**
- * Provider that enriches Jira issue references via the Atlassian CLI.
+ * @typedef {Object} JiraNormalizedIssue
+ * Canonical shape consumed by {@link formatJiraIssue}. Backends MUST
+ * convert their CLI's output to this shape so the formatter stays
+ * CLI-agnostic.
+ *
+ * @property {string} [url]
+ * @property {Object} fields
+ * @property {string} [fields.summary]
+ * @property {string|Object} [fields.description] Plain string or ADF.
+ * @property {{name: string}|string} [fields.status]
+ * @property {{name: string}|string} [fields.issuetype]
+ * @property {{name: string}|string} [fields.priority]
+ * @property {{displayName: string}|string} [fields.assignee]
+ * @property {{displayName: string}|string} [fields.reporter]
+ */
+
+/**
+ * @typedef {Object} JiraBackend
+ * @property {(key: string, ctx: import("./index.mjs").EnrichmentContext) => Promise<JiraNormalizedIssue|null>} fetch
+ *   Run the CLI and return a normalized issue, or `null` on any failure
+ *   (CLI not installed, auth missing, 404, parse error).
+ * @property {(key: string) => string} refetchHint
+ *   Shell command the user can run to refetch with comments. Rendered
+ *   verbatim into the markdown footer so the suggestion matches the
+ *   CLI the user actually has installed.
+ */
+
+/**
+ * Backends per CLI. Selection is driven by `ctx.providerConfig("jira").cli`.
+ *
+ * `acli` (Atlassian CLI) is the default and emits issues in standard
+ * Jira REST shape (`{ url, fields: {...} }`) so its `fetch` is a thin
+ * passthrough. `jira-cli` (ankitpokhrel/jira-cli) goes through
+ * `jira issue list --jql "key = X" --raw`, returns an array, and uses
+ * camelCase `issueType` instead of REST's `issuetype` - the normalizer
+ * unwraps both.
+ *
+ * @type {Object<string, JiraBackend>}
+ */
+const backends = {
+  acli: {
+    async fetch(key, ctx) {
+      const resp = await ctx.runner(
+        "acli",
+        ["jira", "workitem", "view", key, "--json"],
+        { cwd: ctx.cwd },
+      );
+      if (resp.code !== 0) return null;
+      const data = safeJsonParse(resp.stdout);
+      if (!data || typeof data !== "object") return null;
+      return data;
+    },
+    refetchHint(key) {
+      return `acli jira workitem view ${key} --comments`;
+    },
+  },
+
+  "jira-cli": {
+    async fetch(key, ctx) {
+      const resp = await ctx.runner(
+        "jira",
+        ["issue", "list", "--jql", `key = ${key}`, "--raw", "--paginate", "0:1"],
+        { cwd: ctx.cwd },
+      );
+      if (resp.code !== 0) return null;
+      const data = safeJsonParse(resp.stdout);
+      const first = Array.isArray(data) ? data[0] : null;
+      if (!first || typeof first !== "object") return null;
+      return normalizeJiraCli(first);
+    },
+    refetchHint(key) {
+      return `jira issue view ${key} --comments 10`;
+    },
+  },
+};
+
+/**
+ * jira-cli emits `fields.issueType` (camelCase). Standard Jira REST
+ * (and acli) use `fields.issuetype` (lowercase). Mirror it so
+ * {@link formatJiraIssue} can read either.
+ *
+ * @param {Object} issue Raw `Issue` object from `jira issue list --raw`.
+ * @returns {JiraNormalizedIssue}
+ */
+function normalizeJiraCli(issue) {
+  const fields = { ...(issue.fields ?? {}) };
+  if (fields.issueType && !fields.issuetype) {
+    fields.issuetype = fields.issueType;
+  }
+  return { ...issue, fields };
+}
+
+/**
+ * Provider that enriches Jira issue references via a swappable CLI
+ * backend (`acli` by default, `jira-cli` opt-in via config).
  *
  * Recognized reference shapes:
  *   - URL:  https://yourorg.atlassian.net/browse/PROJ-123
  *   - Key:  PROJ-123  (any uppercase project prefix + dash + number)
  *
- * References inside backticks are skipped, so users can paste a key as
+ * References inside backticks are skipped so users can paste a key as
  * literal text without triggering a fetch.
  */
 export const jiraProvider = {
@@ -30,8 +126,7 @@ export const jiraProvider = {
    *
    * @param {string} text
    * @param {[number, number][]} codeRanges
-   * @param {import("./index.mjs").EnrichmentContext} [_ctx] Unused; kept for
-   *   contract compatibility with other providers.
+   * @param {import("./index.mjs").EnrichmentContext} [_ctx]
    * @returns {JiraMatch[]}
    */
   detect(text, codeRanges, _ctx) {
@@ -56,19 +151,15 @@ export const jiraProvider = {
 
   /**
    * @param {JiraMatch} match
-   * @param {{cwd: string, runner: Function}} ctx
+   * @param {import("./index.mjs").EnrichmentContext} ctx
    * @returns {Promise<string|null>}
    */
   async fetch(match, ctx) {
-    const resp = await ctx.runner(
-      "acli",
-      ["jira", "workitem", "view", match.key, "--json"],
-      { cwd: ctx.cwd },
-    );
-    if (resp.code !== 0) return null;
-    const data = safeJsonParse(resp.stdout);
-    if (!data) return null;
-    return formatJiraIssue(match.key, data);
+    const cliName = pickBackendName(ctx);
+    const backend = backends[cliName];
+    const issue = await backend.fetch(match.key, ctx);
+    if (!issue) return null;
+    return formatJiraIssue(match.key, issue, backend.refetchHint(match.key));
   },
 
   /**
@@ -81,14 +172,35 @@ export const jiraProvider = {
 };
 
 /**
- * Render the markdown block. Tolerates two shapes Jira returns:
- * `{fields: {...}}` (REST v3) and a flat object (acli's flattened view).
+ * Resolve which backend to use. Defaults to `acli` and falls back when
+ * an unknown name appears in config so a typo doesn't silently disable
+ * the provider.
+ *
+ * @param {import("./index.mjs").EnrichmentContext} ctx
+ * @returns {keyof typeof backends}
+ */
+function pickBackendName(ctx) {
+  const requested = ctx.providerConfig?.("jira")?.cli;
+  if (typeof requested !== "string" || !requested) return DEFAULT_BACKEND;
+  if (!backends[requested]) {
+    process.stderr.write(
+      `auto-enrich: unknown jira cli "${requested}"; falling back to ${DEFAULT_BACKEND}\n`,
+    );
+    return DEFAULT_BACKEND;
+  }
+  return requested;
+}
+
+/**
+ * Render the markdown block from a normalized issue. Tolerates both
+ * `{fields: {...}}` and flat shapes acli sometimes returns.
  *
  * @param {string} key
- * @param {Object} raw Parsed acli/Jira response.
+ * @param {JiraNormalizedIssue} raw
+ * @param {string} refetchHint Shell command rendered into the footer.
  * @returns {string}
  */
-function formatJiraIssue(key, raw) {
+function formatJiraIssue(key, raw, refetchHint) {
   const fields = raw.fields ?? raw;
   const summary = pickFirstString(fields.summary, raw.summary);
   const status = pickFirstString(fields.status, raw.status);
@@ -108,6 +220,6 @@ function formatJiraIssue(key, raw) {
   lines.push(`- Assignee: ${assignee}`);
   if (reporter) lines.push(`- Reporter: ${reporter}`);
   if (description) lines.push("", "**Description:**", description);
-  lines.push("", `Refetch with comments: \`acli jira workitem view ${key} --comments\``);
+  lines.push("", `Refetch with comments: \`${refetchHint}\``);
   return lines.join("\n");
 }

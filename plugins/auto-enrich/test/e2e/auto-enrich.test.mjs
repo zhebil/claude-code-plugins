@@ -319,6 +319,39 @@ esac
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
   });
 
+  it("uses jira-cli backend when configured", async () => {
+    await writeStub("acli", `echo "should not be called" >&2; exit 99`);
+    await writeStub(
+      "jira",
+      `
+case "$*" in
+  "issue list --jql key = PROJ-1 --raw --paginate 0:1")
+    cat <<'JSON'
+[{"key":"PROJ-1","fields":{"summary":"Title","issueType":{"name":"Bug"},"status":{"name":"Open"},"assignee":{"displayName":"Alice"}}}]
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+    await writeConfig(cacheDir, { providers: { jira: { cli: "jira-cli" } } });
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-jira-cli",
+      cwd: process.cwd(),
+      user_prompt: "look at PROJ-1",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: jira PROJ-1/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Type: Bug/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /jira issue view PROJ-1 --comments 10/);
+  });
+
   it("skips a provider when disabled in config", async () => {
     await writeStub(
       "acli",
