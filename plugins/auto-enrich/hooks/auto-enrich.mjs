@@ -3,7 +3,7 @@ import { runCommand } from "./lib/run.mjs";
 import { safeJsonParse } from "./lib/json.mjs";
 import { findCodeRanges } from "./lib/code-ranges.mjs";
 import { loadSeenIds, saveSeenItems } from "./lib/cache.mjs";
-import { loadConfig, isProviderEnabled, getProviderConfig } from "./lib/config.mjs";
+import { loadConfig, isProviderEnabled, getProviderConfig, isProjectTrusted } from "./lib/config.mjs";
 import { loadCustomProviders } from "./lib/discovery.mjs";
 import { providers } from "./providers/index.mjs";
 
@@ -171,7 +171,9 @@ async function main() {
   const codeRanges = findCodeRanges(userPrompt);
   const config = await loadConfig();
   const builtinNames = new Set(providers.map((p) => p.name));
-  const custom = await loadCustomProviders(builtinNames);
+  const custom = await loadCustomProviders(builtinNames, {
+    allowProject: isProjectTrusted(config, cwd),
+  });
   const allProviders = [...providers, ...custom];
   const active = allProviders.filter((p) => isProviderEnabled(config, p.name));
   if (!active.length) return;

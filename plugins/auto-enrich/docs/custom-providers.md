@@ -27,18 +27,63 @@ Custom providers run **after** built-ins. To replace a built-in,
 disable it via `config.json` and ship a custom one with a different
 name (see [Replacing a built-in](#replacing-a-built-in)).
 
-> **Note.** Discovery is global only (`~/.claude/auto-enrich/...`).
-> Per-repo discovery is intentionally not supported - cloned code from
-> a third-party repo would otherwise execute inside the hook process
-> on every prompt.
+> **Note.** Discovery defaults to global only
+> (`~/.claude/auto-enrich/...`). Project-level providers
+> (`<projectRoot>/.claude/auto-enrich/...`) are also supported but are
+> opt-in per project - see [Project-level providers](#project-level-providers)
+> below. The opt-in mechanism prevents arbitrary cloned repositories
+> from executing code inside the hook process.
 >
 > Adding, editing, or removing a provider file requires a new Claude
 > Code session for the change to take effect (the manifest is written
 > at session start, not re-scanned per prompt).
 
+### Project-level providers
+
+A project can ship its own providers under
+`<projectRoot>/.claude/auto-enrich/providers/*.provider.mjs`, but the
+plugin loads them only when the project's absolute path is on the
+user's trust list in their **global** config:
+
+```jsonc
+// $CLAUDE_PLUGIN_DATA/config.json (or ~/.claude/auto-enrich.json)
+{
+  "trustedProjects": [
+    "/Users/me/work/some-repo",
+    "/Users/me/work/another-repo"
+  ]
+}
+```
+
+Match is exact against the resolved cwd Claude Code passes the hook -
+no glob, no prefix walk. Trusting `/path/to/repo` does **not** trust
+`/path/to/repo/sub`. If you need a subdirectory, list it explicitly.
+
+`trustedProjects` is read **only** from the user's global config. An
+in-repo `config.json` cannot grant itself trust; if it could, the
+boundary would be useless.
+
+Resolution order: built-ins win over global custom; global custom
+wins over project custom. A project provider whose `name` collides
+with anything earlier is rejected with a stderr warning.
+
+The orchestrator re-checks the trust list at every prompt as defense
+in depth, so revoking trust in the global config takes effect on the
+next prompt without needing a SessionStart re-run.
+
+**Why this matters.** Every `*.provider.mjs` is dynamic-imported into
+the hook's Node process - the same process that has access to your
+working tree, environment, and any tokens local CLIs (`gh`, `acli`,
+`sentry`) can reach. A malicious provider could exfiltrate or modify
+anything the hook can. The trust list keeps that surface to projects
+you've consciously vouched for.
+
 ## File location and naming
 
-- Directory: `~/.claude/auto-enrich/providers/`
+- Global directory: `~/.claude/auto-enrich/providers/` (always scanned)
+- Project directory: `<projectRoot>/.claude/auto-enrich/providers/`
+  (scanned only when the cwd is on `trustedProjects` - see
+  [Project-level providers](#project-level-providers))
 - Filename: `<anything>.provider.mjs` (the suffix is required)
 - Format: ECMAScript module (`type: "module"` semantics, no TypeScript
   toolchain - the hook runs raw `node`)
@@ -443,8 +488,11 @@ the same way the built-ins do - see
   is not supported. Use `.provider.mjs` and JSDoc types.
 - **No live reload.** Adding, editing, or removing a file requires a
   fresh Claude Code session for `SessionStart` to re-scan.
-- **No per-repo discovery.** A repository cannot opt itself in to
-  custom providers. The discovery dir is global only.
+- **Project-level discovery is opt-in.** A repository's
+  `.claude/auto-enrich/providers/` is loaded only when the project's
+  absolute path appears in `trustedProjects` in the user's global
+  config. Cloned repos cannot trust themselves. See
+  [Project-level providers](#project-level-providers).
 - **No bundled SDK.** The plugin's `lib/` helpers are not a public
   surface and may break between releases. Inline the small bits you
   need (the `insideCode` predicate is one line) rather than importing

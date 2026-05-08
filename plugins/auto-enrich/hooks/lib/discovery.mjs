@@ -7,22 +7,41 @@ const SUPPORTED_API_VERSION = 1;
 const FILE_SUFFIX = ".provider.mjs";
 
 /**
+ * @typedef {"global" | "project"} ProviderSource
+ *
+ * @typedef {Object} ManifestEntry
+ * @property {string} path Absolute path, safe to `await import()`.
+ * @property {ProviderSource} source Where it was discovered. `global`
+ *   means `~/.claude/auto-enrich/providers/`; `project` means
+ *   `<projectRoot>/.claude/auto-enrich/providers/` (only present for
+ *   trusted projects - see `isProjectTrusted`).
+ *
  * @typedef {Object} DiscoveryManifest
  * @property {number} loadedAt Epoch ms when SessionStart wrote the file.
- * @property {string[]} paths Absolute paths to validated `.provider.mjs`
- *   files. Each is safe to `await import()`.
+ * @property {ManifestEntry[]} entries Validated `.provider.mjs` files
+ *   in load order: global first, then project.
  */
 
 /**
- * Default discovery directory: `~/.claude/auto-enrich/providers/`.
- * User-global, deliberately not per-repo - per-repo would let cloned
- * code execute inside the hook process at every prompt.
+ * Default global discovery directory: `~/.claude/auto-enrich/providers/`.
  *
  * @returns {string}
  */
 export function getDiscoveryDir() {
   const home = process.env.HOME || process.cwd();
   return join(home, ".claude", "auto-enrich", "providers");
+}
+
+/**
+ * Per-project discovery directory under the given working directory.
+ * Loaded only when the project is on the user's trust list (see
+ * `isProjectTrusted`).
+ *
+ * @param {string} cwd
+ * @returns {string}
+ */
+export function getProjectDiscoveryDir(cwd) {
+  return join(cwd, ".claude", "auto-enrich", "providers");
 }
 
 /**
@@ -37,19 +56,20 @@ export function getManifestPath() {
 }
 
 /**
- * Scan the discovery directory, validate every `*.provider.mjs` against
- * the contract, and return the list of accepted paths plus a parallel
+ * Scan a single discovery directory and validate every `*.provider.mjs`
+ * against the contract. Returns the accepted paths plus a parallel
  * array of human-readable warnings for files that were skipped.
  *
- * Built-in names are passed in so we can reject collisions with the
- * shipped providers - the orchestrator wouldn't know which one to call.
+ * `seenNames` is mutated in place: each accepted provider's name is
+ * added so callers can chain multiple scans (built-ins -> global ->
+ * project) and reject collisions across all of them.
  *
  * @param {Object} options
- * @param {Set<string>} options.builtinNames Names registered statically.
- * @param {string} [options.dir] Override the scan dir (used in tests).
+ * @param {string} options.dir Directory to scan.
+ * @param {Set<string>} options.seenNames Names already taken; mutated.
  * @returns {Promise<{paths: string[], warnings: string[]}>}
  */
-export async function discoverProviders({ builtinNames, dir = getDiscoveryDir() }) {
+async function scanDir({ dir, seenNames }) {
   let entries;
   try {
     entries = await readdir(dir);
@@ -64,7 +84,6 @@ export async function discoverProviders({ builtinNames, dir = getDiscoveryDir() 
 
   const paths = [];
   const warnings = [];
-  const seenNames = new Set(builtinNames);
   for (const path of candidates) {
     const result = await validateProviderFile(path, seenNames);
     if (result.ok) {
@@ -75,6 +94,42 @@ export async function discoverProviders({ builtinNames, dir = getDiscoveryDir() 
     }
   }
   return { paths, warnings };
+}
+
+/**
+ * Scan the global discovery directory and (optionally) a project
+ * discovery directory, validating every `*.provider.mjs` against the
+ * contract. Built-ins win over global, global wins over project: a
+ * name registered earlier in that order causes later collisions to be
+ * rejected with a warning.
+ *
+ * Returns a manifest-ready `entries` array tagged with each provider's
+ * source plus warnings. Backward-compat callers that want only the
+ * paths can read `entries.map(e => e.path)`.
+ *
+ * @param {Object} options
+ * @param {Set<string>} options.builtinNames Names registered statically.
+ * @param {string} [options.dir] Override the global scan dir (tests).
+ * @param {string} [options.projectDir] Optional project scan dir;
+ *   omitted/empty disables project discovery.
+ * @returns {Promise<{entries: ManifestEntry[], paths: string[], warnings: string[]}>}
+ */
+export async function discoverProviders({ builtinNames, dir = getDiscoveryDir(), projectDir = null }) {
+  const seenNames = new Set(builtinNames);
+  const entries = [];
+  const warnings = [];
+
+  const global = await scanDir({ dir, seenNames });
+  warnings.push(...global.warnings);
+  for (const path of global.paths) entries.push({ path, source: "global" });
+
+  if (projectDir) {
+    const project = await scanDir({ dir: projectDir, seenNames });
+    warnings.push(...project.warnings);
+    for (const path of project.paths) entries.push({ path, source: "project" });
+  }
+
+  return { entries, paths: entries.map((e) => e.path), warnings };
 }
 
 /**
@@ -126,24 +181,49 @@ export async function validateProviderFile(absPath, reservedNames) {
 }
 
 /**
- * Atomically write the manifest. Caller passes the validated paths.
+ * Atomically write the manifest. Accepts either the new tagged-entries
+ * form (preferred) or a flat path list (treated as all-global, kept
+ * for backward compat with older callers and tests).
  *
- * @param {string[]} paths
+ * The on-disk schema records both `entries` (source-tagged) and
+ * `paths` (flat) so older readers degrade gracefully.
+ *
+ * @param {ManifestEntry[] | string[]} input
  * @returns {Promise<void>}
  */
-export async function writeManifest(paths) {
+export async function writeManifest(input) {
+  const entries = normalizeManifestInput(input);
   const file = getManifestPath();
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  const payload = { loadedAt: Date.now(), paths };
+  const payload = {
+    loadedAt: Date.now(),
+    entries,
+    paths: entries.map((e) => e.path),
+  };
   await writeFile(tmp, JSON.stringify(payload, null, 2));
   await rename(tmp, file);
+}
+
+function normalizeManifestInput(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => {
+      if (typeof item === "string") return { path: item, source: "global" };
+      if (item && typeof item === "object" && typeof item.path === "string") {
+        const source = item.source === "project" ? "project" : "global";
+        return { path: item.path, source };
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 /**
  * Read the manifest written by SessionStart. Returns an empty result
  * when the file doesn't exist (first run, or no custom providers
- * installed).
+ * installed). Tolerates the legacy `paths`-only schema for forward
+ * compat with manifests written by older versions.
  *
  * @returns {Promise<DiscoveryManifest>}
  */
@@ -155,33 +235,53 @@ export async function readManifest() {
     if (error?.code !== "ENOENT") {
       process.stderr.write(`auto-enrich: discovery manifest unreadable (${error?.code ?? error})\n`);
     }
-    return { loadedAt: 0, paths: [] };
+    return { loadedAt: 0, entries: [] };
   }
   const parsed = safeJsonParse(raw);
-  if (!parsed || !Array.isArray(parsed.paths)) return { loadedAt: 0, paths: [] };
-  return { loadedAt: Number(parsed.loadedAt) || 0, paths: parsed.paths.filter((p) => typeof p === "string") };
+  if (!parsed) return { loadedAt: 0, entries: [] };
+  const loadedAt = Number(parsed.loadedAt) || 0;
+  if (Array.isArray(parsed.entries)) {
+    const entries = parsed.entries
+      .filter((e) => e && typeof e === "object" && typeof e.path === "string")
+      .map((e) => ({ path: e.path, source: e.source === "project" ? "project" : "global" }));
+    return { loadedAt, entries };
+  }
+  if (Array.isArray(parsed.paths)) {
+    const entries = parsed.paths
+      .filter((p) => typeof p === "string")
+      .map((path) => ({ path, source: "global" }));
+    return { loadedAt, entries };
+  }
+  return { loadedAt: 0, entries: [] };
 }
 
 /**
- * Dynamic-import every path in the manifest and return the resolved
- * provider objects. Files that fail to import (deleted between
- * SessionStart and now, or threw on load) are skipped silently with a
- * stderr warning - we already validated them once so this should be
- * rare.
+ * Dynamic-import every entry in the manifest and return the resolved
+ * provider objects in load order: global first, then project. Files
+ * that fail to import (deleted between SessionStart and now, or threw
+ * on load) are skipped silently with a stderr warning.
  *
  * Defense-in-depth: even though SessionStart validated, we re-check
  * apiVersion + name + required functions here so a compromised
  * manifest can't slip in arbitrary objects.
  *
+ * Project-source entries are dropped before import when
+ * `options.allowProject` is false (i.e. the cwd is no longer trusted
+ * at prompt time).
+ *
  * @param {Set<string>} builtinNames
+ * @param {Object} [options]
+ * @param {boolean} [options.allowProject] Defaults to `true` for
+ *   backward compat; orchestrator passes the live trust check.
  * @returns {Promise<import("../providers/index.mjs").Provider[]>}
  */
-export async function loadCustomProviders(builtinNames) {
-  const { paths } = await readManifest();
-  if (!paths.length) return [];
+export async function loadCustomProviders(builtinNames, { allowProject = true } = {}) {
+  const { entries } = await readManifest();
+  if (!entries.length) return [];
+  const filtered = allowProject ? entries : entries.filter((e) => e.source !== "project");
   const loaded = [];
   const taken = new Set(builtinNames);
-  for (const path of paths) {
+  for (const { path } of filtered) {
     let mod;
     try {
       mod = await import(pathToFileURL(path).href);
