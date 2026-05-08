@@ -16,7 +16,7 @@ Matches inside inline code or fenced code blocks are ignored. Each entity is enr
 The plugin uses local CLIs and silently skips entities that cannot be fetched:
 
 - `gh` authenticated for GitHub
-- `acli` authenticated for Jira
+- One of: `acli` (default) or `jira` (ankitpokhrel/jira-cli) authenticated for Jira
 - `sentry` authenticated for Sentry
 - Node.js available as `node`
 
@@ -56,6 +56,72 @@ Then reload plugins or restart Claude Code:
 ```bash
 claude plugin disable auto-enrich@zhebil-tools
 ```
+
+## Configure
+
+Run `/auto-enrich:configure` from inside Claude Code to view or edit the
+config file. The slash command shows the current state and walks you
+through updates.
+
+The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
+`~/.claude/auto-enrich.json` if `CLAUDE_PLUGIN_DATA` is not set):
+
+```jsonc
+{
+  "providers": {
+    "github-issue": { "enabled": true },
+    "github-repo":  { "enabled": true },
+    "jira":         { "enabled": true, "cli": "acli" },
+    "sentry":       { "enabled": true }
+  }
+}
+```
+
+- `enabled` defaults to `true` when omitted.
+- `jira.cli` selects the Jira CLI: `"acli"` (default) or `"jira-cli"`
+  (ankitpokhrel/jira-cli, binary `jira`). Unknown values fall back to `acli`.
+
+A missing or invalid file falls back to defaults (every provider on,
+acli for jira).
+
+## Custom providers
+
+Drop `*.provider.mjs` files into `~/.claude/auto-enrich/providers/` and
+restart Claude Code. A `SessionStart` hook validates each file once per
+session and writes a manifest the prompt hook reads. Files that don't
+satisfy the contract are skipped with a stderr warning.
+
+A custom provider is a plain ESM module that default-exports an object:
+
+```js
+// ~/.claude/auto-enrich/providers/linear.provider.mjs
+const PATTERN = /\b(LIN-\d+)\b/g;
+
+export default {
+  apiVersion: 1,
+  name: "linear",                 // must not collide with built-ins
+  // optional: prepare(text, ctx)
+  detect(text, codeRanges, ctx) {
+    const out = [];
+    for (const m of text.matchAll(PATTERN)) {
+      out.push({ id: `linear:${m[1]}`, key: m[1] });
+    }
+    return out;
+  },
+  async fetch(match, ctx) {
+    // use ctx.runner(cmd, args, { cwd: ctx.cwd }), return markdown or null
+    return `#### Linear ${match.key}\n- ...`;
+  },
+  summarize(match) {
+    return `linear ${match.key}`;
+  },
+};
+```
+
+Custom providers run after built-ins. Disable a built-in via `config.json`
+to hand its territory off to a custom provider with a different name.
+The discovery dir is global only - per-repo discovery is intentionally
+not supported, so cloned repositories cannot inject code into the hook.
 
 ## Test the hook directly
 

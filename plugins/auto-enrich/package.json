@@ -1,0 +1,10 @@
+{
+  "name": "auto-enrich",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "test:unit": "node --test \"test/unit/**/*.test.mjs\"",
+    "test:e2e": "node --test \"test/e2e/**/*.test.mjs\""
+  }
+}
