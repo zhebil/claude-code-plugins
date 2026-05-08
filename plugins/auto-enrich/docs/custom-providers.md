@@ -161,17 +161,7 @@ collisions with other providers.
 `codeRanges` is a `[startInclusive, endExclusive][]` array of byte
 ranges that fall inside inline backticks or fenced code blocks. **You
 MUST skip matches whose offset falls inside any of these ranges**, so
-that backticked text is never enriched. The shipped `lib/code-ranges`
-helper exposes `isInsideCode(offset, codeRanges)` - it's the same one
-built-ins use:
-
-```js
-import { isInsideCode } from "/path/to/plugin/hooks/lib/code-ranges.mjs";
-```
-
-But: `lib/` is **not a stable public API**. Custom providers should
-inline this trivial check rather than reaching into the plugin's
-internals:
+that backticked text is never enriched.
 
 ```js
 const insideCode = (offset, ranges) =>
