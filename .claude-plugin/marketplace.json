@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "zhebil-tools",
+  "description": "Claude Code plugins for developer productivity.",
+  "owner": {
+    "name": "Zhebil"
+  },
+  "plugins": [
+    {
+      "name": "auto-enrich",
+      "description": "Auto-enrich Claude Code prompts with Jira, GitHub, and Sentry context.",
+      "author": {
+        "name": "Zhebil"
+      },
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/auto-enrich",
+      "repository": "https://github.com/zhebil/claude-code-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "tags": ["jira", "github", "sentry", "hooks", "context", "claude-code-plugin"],
+      "source": "./plugins/auto-enrich"
+    }
+  ]
+}

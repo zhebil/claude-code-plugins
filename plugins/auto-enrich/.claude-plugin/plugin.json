@@ -1,0 +1,12 @@
+{
+  "name": "auto-enrich",
+  "version": "0.1.1",
+  "description": "Auto-enrich user prompts with context for Jira tickets, GitHub PRs/issues/repos, and Sentry issues.",
+  "author": {
+    "name": "Zhebil"
+  },
+  "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/auto-enrich",
+  "repository": "https://github.com/zhebil/claude-code-plugins",
+  "license": "MIT",
+  "keywords": ["hooks", "jira", "github", "sentry", "context"]
+}

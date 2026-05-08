@@ -1,0 +1,17 @@
+{
+  "description": "Auto-enrich prompts with Jira, GitHub, and Sentry context.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/auto-enrich.mjs",
+            "timeout": 90,
+            "statusMessage": "Auto-enriching referenced tickets and links"
+          }
+        ]
+      }
+    ]
+  }
+}
