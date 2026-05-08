@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { safeJsonParse } from "./lib/json.mjs";
-import { popCompactStash, stashForCompact } from "./lib/cache.mjs";
+import { readCompactStash, stashForCompact } from "./lib/cache.mjs";
 
 /**
  * Read all of stdin into a string. Claude Code pipes the hook payload here.
@@ -46,9 +46,11 @@ function formatReferences(items) {
  *                     post-compact stash and clear active dedup memory,
  *                     so the user can re-mention the same refs and have
  *                     them re-attached.
- *   - `SessionStart`: when `source === "compact"`, drain the stash and
- *                     emit a reference-only summary as additionalContext
- *                     so the model knows what was previously attached.
+ *   - `SessionStart`: when `source === "compact"`, read the stash (without
+ *                     clearing it) and emit a reference-only summary as
+ *                     additionalContext so the model knows what was
+ *                     previously attached. The stash stays in place so a
+ *                     subsequent compaction can merge into it.
  *
  * Any uncaught error exits 0 so the hook never blocks Claude Code.
  */
@@ -64,7 +66,7 @@ async function main() {
 
   if (event === "SessionStart") {
     if (input.source !== "compact") return;
-    const items = await popCompactStash(sessionId);
+    const items = await readCompactStash(sessionId);
     if (!items.length) return;
     const additionalContext = formatReferences(items);
     process.stdout.write(

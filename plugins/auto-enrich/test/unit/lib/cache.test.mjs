@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   loadSeenIds,
-  popCompactStash,
+  readCompactStash,
   saveSeenItems,
   stashForCompact,
 } from "../../../hooks/lib/cache.mjs";
@@ -115,23 +115,64 @@ describe("stashForCompact", () => {
   });
 });
 
-describe("popCompactStash", () => {
+describe("readCompactStash", () => {
   it("returns an empty array when nothing was stashed", async () => {
-    assert.deepEqual(await popCompactStash("s"), []);
+    assert.deepEqual(await readCompactStash("s"), []);
   });
 
-  it("returns stashed items and removes the entry", async () => {
+  it("returns stashed items and leaves them in place for repeat reads", async () => {
     const { all } = await loadSeenIds("s");
     await saveSeenItems(all, "s", [item("a"), item("b")]);
     await stashForCompact("s");
 
-    const first = await popCompactStash("s");
+    const first = await readCompactStash("s");
     assert.deepEqual(first, [
       { id: "a", summary: "s a" },
       { id: "b", summary: "s b" },
     ]);
 
-    const second = await popCompactStash("s");
-    assert.deepEqual(second, []);
+    // Stash is sticky: subsequent reads return the same items so a later
+    // compaction's PreCompact can merge fresh refs into the existing list.
+    const second = await readCompactStash("s");
+    assert.deepEqual(second, first);
+  });
+});
+
+describe("stashForCompact across multiple compactions", () => {
+  it("merges new session items into an existing stash, deduped by id", async () => {
+    // First compaction: session has [a, b].
+    const first = await loadSeenIds("s");
+    await saveSeenItems(first.all, "s", [item("a"), item("b")]);
+    await stashForCompact("s");
+
+    // After SessionStart-on-compact reads the stash, dedup memory is empty,
+    // and the user enriches new refs [c, d] (and re-mentions [a]).
+    const second = await loadSeenIds("s");
+    assert.equal(second.seen.size, 0);
+    await saveSeenItems(second.all, "s", [
+      { id: "a", summary: "s a (refetched)" },
+      item("c"),
+      item("d"),
+    ]);
+
+    // Second compaction: stash should now contain a, b, c, d - not just c, d.
+    await stashForCompact("s");
+    const stash = await readCompactStash("s");
+    const ids = stash.map((it) => it.id).sort();
+    assert.deepEqual(ids, ["a", "b", "c", "d"]);
+    // Current-session summary wins on id collision.
+    const a = stash.find((it) => it.id === "a");
+    assert.equal(a.summary, "s a (refetched)");
+  });
+
+  it("preserves the stash even when the current session has no new items", async () => {
+    const { all } = await loadSeenIds("s");
+    await saveSeenItems(all, "s", [item("a")]);
+    await stashForCompact("s");
+
+    // Second PreCompact with no new session activity should leave the stash intact.
+    await stashForCompact("s");
+    const stash = await readCompactStash("s");
+    assert.deepEqual(stash, [{ id: "a", summary: "s a" }]);
   });
 });

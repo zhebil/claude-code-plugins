@@ -109,14 +109,20 @@ export async function saveSeenItems(all, sessionId, items) {
 }
 
 /**
- * Move a session's seen-items into the post-compact stash and clear the
+ * Merge a session's seen-items into the post-compact stash and clear the
  * active session entry, in a single atomic write. Called from PreCompact:
  * the model is about to lose the inline enrichment context, so we save a
  * lightweight reference list to be re-emitted after compact, and we clear
  * dedup memory so the user can re-mention the same refs and have them
  * re-attached.
  *
- * No-op when the session has no items.
+ * The stash is sticky across compactions within a session: existing stashed
+ * items are preserved and deduped against the current session items (current
+ * wins on id collision so summaries reflect the latest enrichment). This is
+ * what lets a session that has been compacted multiple times still surface
+ * refs from the very first turn.
+ *
+ * No-op when both the session entry and the existing stash are empty.
  *
  * @param {string} sessionId
  * @returns {Promise<void>}
@@ -124,24 +130,29 @@ export async function saveSeenItems(all, sessionId, items) {
 export async function stashForCompact(sessionId) {
   const all = await readCache();
   const items = Array.isArray(all.sessions[sessionId]) ? all.sessions[sessionId] : [];
-  if (!items.length) return;
-  all.stashed[sessionId] = items;
+  const prior = Array.isArray(all.stashed[sessionId]) ? all.stashed[sessionId] : [];
+  if (!items.length && !prior.length) return;
+  const byId = new Map();
+  for (const it of prior) if (it && typeof it.id === "string") byId.set(it.id, it);
+  for (const it of items) if (it && typeof it.id === "string") byId.set(it.id, it);
+  all.stashed[sessionId] = Array.from(byId.values()).slice(-MAX_SESSION_ENTRIES);
   delete all.sessions[sessionId];
   await writeCache(all);
 }
 
 /**
- * Read and remove the post-compact stash for a session. Called from
- * SessionStart-on-compact to surface "previously attached" references.
+ * Read the post-compact stash for a session without clearing it. Called
+ * from SessionStart-on-compact to surface "previously attached" references.
+ *
+ * The stash is intentionally NOT drained here: a session can be compacted
+ * more than once, and each subsequent PreCompact merges fresh items into
+ * the same stash. Draining on read would lose refs from earlier compactions.
  *
  * @param {string} sessionId
  * @returns {Promise<SeenItem[]>} Empty array when nothing was stashed.
  */
-export async function popCompactStash(sessionId) {
+export async function readCompactStash(sessionId) {
   const all = await readCache();
   const items = Array.isArray(all.stashed[sessionId]) ? all.stashed[sessionId] : [];
-  if (!items.length) return [];
-  delete all.stashed[sessionId];
-  await writeCache(all);
   return items;
 }

@@ -147,13 +147,78 @@ esac
     // Critically, the full body must NOT be re-emitted.
     assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /long body/);
 
-    // Calling SessionStart again is a no-op (stash already drained).
+    // Stash is sticky across reads so a subsequent compaction can merge
+    // fresh refs into the same list. Calling SessionStart again still emits.
     const second = await runHook(COMPACT_HOOK, {
       session_id: sid,
       hook_event_name: "SessionStart",
       source: "compact",
     });
-    assert.equal(second.stdout, "");
+    const secondParsed = JSON.parse(second.stdout);
+    assert.match(secondParsed.hookSpecificOutput.additionalContext, /github:me\/proj#3/);
+  });
+
+  it("accumulates refs across multiple compactions in a single session", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/issues/1")
+    echo '{"title":"first","state":"open","user":{"login":"a"}}'
+    ;;
+  "api repos/me/proj/issues/2")
+    echo '{"title":"second","state":"open","user":{"login":"b"}}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const sid = "compact-multi";
+
+    // Turn 1: enrich issue #1.
+    await runHook(ENRICH_HOOK, {
+      session_id: sid,
+      cwd: process.cwd(),
+      user_prompt: "https://github.com/me/proj/issues/1",
+    });
+
+    // First compaction.
+    await runHook(COMPACT_HOOK, {
+      session_id: sid,
+      hook_event_name: "PreCompact",
+      trigger: "manual",
+    });
+    const afterFirst = await runHook(COMPACT_HOOK, {
+      session_id: sid,
+      hook_event_name: "SessionStart",
+      source: "compact",
+    });
+    assert.match(JSON.parse(afterFirst.stdout).hookSpecificOutput.additionalContext, /me\/proj#1/);
+
+    // Turn 2 (after first compaction): enrich issue #2.
+    await runHook(ENRICH_HOOK, {
+      session_id: sid,
+      cwd: process.cwd(),
+      user_prompt: "https://github.com/me/proj/issues/2",
+    });
+
+    // Second compaction: must surface BOTH #1 and #2.
+    await runHook(COMPACT_HOOK, {
+      session_id: sid,
+      hook_event_name: "PreCompact",
+      trigger: "manual",
+    });
+    const afterSecond = await runHook(COMPACT_HOOK, {
+      session_id: sid,
+      hook_event_name: "SessionStart",
+      source: "compact",
+    });
+    const ctx = JSON.parse(afterSecond.stdout).hookSpecificOutput.additionalContext;
+    assert.match(ctx, /me\/proj#1/);
+    assert.match(ctx, /me\/proj#2/);
   });
 
   it("SessionStart with non-compact source is a no-op", async () => {
