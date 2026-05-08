@@ -10,6 +10,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/compact-cleanup.mjs",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -20,6 +30,17 @@
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/auto-enrich.mjs",
             "timeout": 90,
             "statusMessage": "Auto-enriching referenced tickets and links"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/compact-cleanup.mjs",
+            "timeout": 10
           }
         ]
       }

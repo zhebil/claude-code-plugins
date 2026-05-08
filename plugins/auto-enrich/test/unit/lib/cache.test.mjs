@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSeenIds, saveSeenIds } from "../../../hooks/lib/cache.mjs";
+import {
+  loadSeenIds,
+  popCompactStash,
+  saveSeenItems,
+  stashForCompact,
+} from "../../../hooks/lib/cache.mjs";
 
 let tempDir;
 const originalDataDir = process.env.CLAUDE_PLUGIN_DATA;
@@ -19,18 +24,19 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
+const item = (id) => ({ id, summary: `s ${id}` });
+
 describe("loadSeenIds", () => {
   it("returns empty seen-set when cache file is absent", async () => {
-    const { allSessions, seen } = await loadSeenIds("session-1");
-    assert.deepEqual(allSessions, {});
+    const { all, seen } = await loadSeenIds("session-1");
+    assert.deepEqual(all.sessions, {});
+    assert.deepEqual(all.stashed, {});
     assert.equal(seen.size, 0);
   });
 
   it("loads previously saved ids for the same session", async () => {
-    const { allSessions, seen } = await loadSeenIds("session-1");
-    seen.add("a");
-    seen.add("b");
-    await saveSeenIds(allSessions, "session-1", seen);
+    const { all } = await loadSeenIds("session-1");
+    await saveSeenItems(all, "session-1", [item("a"), item("b")]);
 
     const reloaded = await loadSeenIds("session-1");
     assert.deepEqual([...reloaded.seen].sort(), ["a", "b"]);
@@ -38,38 +44,94 @@ describe("loadSeenIds", () => {
 
   it("isolates ids between sessions", async () => {
     const first = await loadSeenIds("session-1");
-    first.seen.add("a");
-    await saveSeenIds(first.allSessions, "session-1", first.seen);
+    await saveSeenItems(first.all, "session-1", [item("a")]);
 
     const second = await loadSeenIds("session-2");
     assert.equal(second.seen.size, 0);
-    second.seen.add("b");
-    await saveSeenIds(second.allSessions, "session-2", second.seen);
+    await saveSeenItems(second.all, "session-2", [item("b")]);
 
     const reloadedFirst = await loadSeenIds("session-1");
     assert.deepEqual([...reloadedFirst.seen].sort(), ["a"]);
   });
 });
 
-describe("saveSeenIds", () => {
-  it("writes JSON keyed by session", async () => {
-    const { allSessions, seen } = await loadSeenIds("s");
-    seen.add("x");
-    await saveSeenIds(allSessions, "s", seen);
+describe("saveSeenItems", () => {
+  it("writes JSON keyed by session under sessions[]", async () => {
+    const { all } = await loadSeenIds("s");
+    await saveSeenItems(all, "s", [item("x")]);
 
     const raw = await readFile(join(tempDir, "seen.json"), "utf8");
     const parsed = JSON.parse(raw);
-    assert.deepEqual(parsed, { s: ["x"] });
+    assert.deepEqual(parsed, {
+      sessions: { s: [{ id: "x", summary: "s x" }] },
+      stashed: {},
+    });
   });
 
-  it("caps each session to 200 newest ids", async () => {
-    const { allSessions, seen } = await loadSeenIds("s");
-    for (let i = 0; i < 250; i++) seen.add(`id-${i}`);
-    await saveSeenIds(allSessions, "s", seen);
+  it("caps each session to 200 newest items", async () => {
+    const { all } = await loadSeenIds("s");
+    const items = Array.from({ length: 250 }, (_, i) => item(`id-${i}`));
+    await saveSeenItems(all, "s", items);
 
     const reloaded = await loadSeenIds("s");
     assert.equal(reloaded.seen.size, 200);
     assert.ok(reloaded.seen.has("id-249"));
     assert.ok(!reloaded.seen.has("id-0"));
+  });
+});
+
+describe("stashForCompact", () => {
+  it("moves a session's items into stashed[] and clears active entry", async () => {
+    const { all } = await loadSeenIds("s");
+    await saveSeenItems(all, "s", [item("a"), item("b")]);
+
+    await stashForCompact("s");
+
+    const raw = JSON.parse(await readFile(join(tempDir, "seen.json"), "utf8"));
+    assert.deepEqual(raw.sessions, {});
+    assert.deepEqual(raw.stashed, {
+      s: [{ id: "a", summary: "s a" }, { id: "b", summary: "s b" }],
+    });
+  });
+
+  it("is a no-op when the session has no items", async () => {
+    await stashForCompact("never-existed");
+    const { all, seen } = await loadSeenIds("never-existed");
+    assert.deepEqual(all.sessions, {});
+    assert.deepEqual(all.stashed, {});
+    assert.equal(seen.size, 0);
+  });
+
+  it("does not disturb other sessions' active entries", async () => {
+    const { all } = await loadSeenIds("a");
+    await saveSeenItems(all, "a", [item("a1")]);
+    const next = await loadSeenIds("b");
+    await saveSeenItems(next.all, "b", [item("b1")]);
+
+    await stashForCompact("a");
+
+    const reloadedB = await loadSeenIds("b");
+    assert.deepEqual([...reloadedB.seen], ["b1"]);
+  });
+});
+
+describe("popCompactStash", () => {
+  it("returns an empty array when nothing was stashed", async () => {
+    assert.deepEqual(await popCompactStash("s"), []);
+  });
+
+  it("returns stashed items and removes the entry", async () => {
+    const { all } = await loadSeenIds("s");
+    await saveSeenItems(all, "s", [item("a"), item("b")]);
+    await stashForCompact("s");
+
+    const first = await popCompactStash("s");
+    assert.deepEqual(first, [
+      { id: "a", summary: "s a" },
+      { id: "b", summary: "s b" },
+    ]);
+
+    const second = await popCompactStash("s");
+    assert.deepEqual(second, []);
   });
 });

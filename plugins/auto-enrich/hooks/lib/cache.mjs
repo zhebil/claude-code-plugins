@@ -5,10 +5,25 @@ import { safeJsonParse } from "./json.mjs";
 const MAX_SESSION_ENTRIES = 200;
 
 /**
+ * @typedef {Object} SeenItem
+ * @property {string} id      Stable, namespaced id (matches `Match.id`).
+ * @property {string} summary Short human label (matches `provider.summarize(match)`).
+ */
+
+/**
+ * @typedef {Object} CacheFile
+ * @property {Object<string, SeenItem[]>} sessions Active per-session enrichment
+ *   memory, used for dedup so we don't re-fetch the same ref twice.
+ * @property {Object<string, SeenItem[]>} stashed Per-session list of items that
+ *   were enriched in the conversation that just got compacted. Populated by
+ *   the PreCompact hook, drained by SessionStart-on-compact so the model
+ *   sees a list of "you previously attached these" references after compact.
+ */
+
+/**
  * @typedef {Object} SeenSnapshot
- * @property {Object<string, string[]>} allSessions Whole on-disk map keyed by
- *   session id, used so callers can persist updates without losing other
- *   sessions' state.
+ * @property {CacheFile} all Whole on-disk cache, used so callers can persist
+ *   updates without losing other sessions' or other keys' state.
  * @property {Set<string>} seen Match ids already enriched in this session.
  */
 
@@ -25,49 +40,108 @@ function getCachePath() {
 }
 
 /**
- * Load the set of already-enriched match ids for a session. Returns an
- * empty snapshot when:
- *   - the cache file does not exist yet (first run), or
- *   - its contents are not valid JSON (corrupted - we'll overwrite).
+ * Read the raw cache file. Returns an empty `CacheFile` when the file is
+ * absent or unparseable.
  *
- * Other errors (EACCES, EISDIR, etc.) are written to stderr so they
- * surface in the hook log rather than silently disabling dedup. We still
- * return an empty snapshot so the prompt isn't blocked.
- *
- * @param {string} sessionId Claude Code session id (or `"ephemeral"`).
- * @returns {Promise<SeenSnapshot>}
+ * @returns {Promise<CacheFile>}
  */
-export async function loadSeenIds(sessionId) {
+async function readCache() {
   let raw;
   try {
     raw = await readFile(getCachePath(), "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      process.stderr.write(`auto-enrich: cache read failed (${error?.code ?? error}); continuing without dedup\n`);
+      process.stderr.write(`auto-enrich: cache read failed (${error?.code ?? error})\n`);
     }
-    return { allSessions: {}, seen: new Set() };
+    return { sessions: {}, stashed: {} };
   }
   const data = safeJsonParse(raw) || {};
-  const seen = new Set(Array.isArray(data[sessionId]) ? data[sessionId] : []);
-  return { allSessions: data, seen };
+  return {
+    sessions: data.sessions && typeof data.sessions === "object" ? data.sessions : {},
+    stashed: data.stashed && typeof data.stashed === "object" ? data.stashed : {},
+  };
 }
 
 /**
- * Persist updated seen-ids for a session via atomic write (`tmp → rename`).
- * Caps each session's list to `MAX_SESSION_ENTRIES` newest entries to keep
- * the cache file bounded.
+ * Atomically write the cache file (`tmp → rename`). Caller is responsible
+ * for capping any list sizes before passing the object in.
  *
- * @param {Object<string, string[]>} allSessions The full cache map (caller
- *   should pass the value returned by {@link loadSeenIds}).
- * @param {string} sessionId Session id to update.
- * @param {Set<string>} seen Updated set of ids for that session.
+ * @param {CacheFile} all
  * @returns {Promise<void>}
  */
-export async function saveSeenIds(allSessions, sessionId, seen) {
+async function writeCache(all) {
   const file = getCachePath();
-  allSessions[sessionId] = [...seen].slice(-MAX_SESSION_ENTRIES);
   await mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  await writeFile(tmp, JSON.stringify(allSessions, null, 2));
+  await writeFile(tmp, JSON.stringify(all, null, 2));
   await rename(tmp, file);
+}
+
+/**
+ * Load the set of already-enriched match ids for a session. Other errors
+ * (EACCES, EISDIR, etc.) are written to stderr so they surface in the hook
+ * log rather than silently disabling dedup. We still return an empty
+ * snapshot so the prompt isn't blocked.
+ *
+ * @param {string} sessionId Claude Code session id (or `"ephemeral"`).
+ * @returns {Promise<SeenSnapshot>}
+ */
+export async function loadSeenIds(sessionId) {
+  const all = await readCache();
+  const items = Array.isArray(all.sessions[sessionId]) ? all.sessions[sessionId] : [];
+  const seen = new Set(items.map((it) => it?.id).filter((id) => typeof id === "string"));
+  return { all, seen };
+}
+
+/**
+ * Persist updated seen items for a session. Caps each session's list to
+ * `MAX_SESSION_ENTRIES` newest entries to keep the cache file bounded.
+ *
+ * @param {CacheFile} all The full cache object (caller should pass the value
+ *   returned by {@link loadSeenIds}).
+ * @param {string} sessionId Session id to update.
+ * @param {SeenItem[]} items Updated list of items for that session.
+ * @returns {Promise<void>}
+ */
+export async function saveSeenItems(all, sessionId, items) {
+  all.sessions[sessionId] = items.slice(-MAX_SESSION_ENTRIES);
+  await writeCache(all);
+}
+
+/**
+ * Move a session's seen-items into the post-compact stash and clear the
+ * active session entry, in a single atomic write. Called from PreCompact:
+ * the model is about to lose the inline enrichment context, so we save a
+ * lightweight reference list to be re-emitted after compact, and we clear
+ * dedup memory so the user can re-mention the same refs and have them
+ * re-attached.
+ *
+ * No-op when the session has no items.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+export async function stashForCompact(sessionId) {
+  const all = await readCache();
+  const items = Array.isArray(all.sessions[sessionId]) ? all.sessions[sessionId] : [];
+  if (!items.length) return;
+  all.stashed[sessionId] = items;
+  delete all.sessions[sessionId];
+  await writeCache(all);
+}
+
+/**
+ * Read and remove the post-compact stash for a session. Called from
+ * SessionStart-on-compact to surface "previously attached" references.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<SeenItem[]>} Empty array when nothing was stashed.
+ */
+export async function popCompactStash(sessionId) {
+  const all = await readCache();
+  const items = Array.isArray(all.stashed[sessionId]) ? all.stashed[sessionId] : [];
+  if (!items.length) return [];
+  delete all.stashed[sessionId];
+  await writeCache(all);
+  return items;
 }

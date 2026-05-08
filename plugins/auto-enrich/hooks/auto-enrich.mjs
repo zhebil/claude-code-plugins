@@ -2,7 +2,7 @@
 import { runCommand } from "./lib/run.mjs";
 import { safeJsonParse } from "./lib/json.mjs";
 import { findCodeRanges } from "./lib/code-ranges.mjs";
-import { loadSeenIds, saveSeenIds } from "./lib/cache.mjs";
+import { loadSeenIds, saveSeenItems } from "./lib/cache.mjs";
 import { loadConfig, isProviderEnabled, getProviderConfig } from "./lib/config.mjs";
 import { loadCustomProviders } from "./lib/discovery.mjs";
 import { providers } from "./providers/index.mjs";
@@ -101,24 +101,22 @@ function detectMatchesAcrossProviders(active, text, codeRanges, ctx) {
  *
  * @param {Array<{provider: import("./providers/index.mjs").Provider, match: import("./providers/index.mjs").Match}>} items
  * @param {import("./providers/index.mjs").EnrichmentContext} ctx
- * @returns {Promise<{blocks: string[], summaries: string[], fetchedIds: string[]}>}
+ * @returns {Promise<{blocks: string[], fetched: import("./lib/cache.mjs").SeenItem[]}>}
  */
 async function fetchEnrichmentBlocks(items, ctx) {
   const blocks = [];
-  const summaries = [];
-  const fetchedIds = [];
+  const fetched = [];
   for (const { provider, match } of items) {
     if (ctx.budgetExceeded()) break;
     try {
       const block = await provider.fetch(match, ctx);
       if (!block) continue;
       blocks.push(block);
-      summaries.push(provider.summarize(match));
-      fetchedIds.push(match.id);
+      fetched.push({ id: match.id, summary: provider.summarize(match) });
     } catch {
     }
   }
-  return { blocks, summaries, fetchedIds };
+  return { blocks, fetched };
 }
 
 /**
@@ -184,18 +182,18 @@ async function main() {
   const detected = detectMatchesAcrossProviders(active, userPrompt, codeRanges, ctx);
   if (!detected.length) return;
 
-  const { allSessions, seen } = await loadSeenIds(sessionId);
+  const { all, seen } = await loadSeenIds(sessionId);
   const fresh = detected
     .filter(({ match }) => !seen.has(match.id))
     .slice(0, MAX_MATCHES_PER_PROMPT);
   if (!fresh.length) return;
 
-  const { blocks, summaries, fetchedIds } = await fetchEnrichmentBlocks(fresh, ctx);
+  const { blocks, fetched } = await fetchEnrichmentBlocks(fresh, ctx);
   if (!blocks.length) return;
 
-  for (const id of fetchedIds) seen.add(id);
-  await saveSeenIds(allSessions, sessionId, seen);
-  emitHookOutput({ blocks, summaries });
+  const existing = Array.isArray(all.sessions[sessionId]) ? all.sessions[sessionId] : [];
+  await saveSeenItems(all, sessionId, [...existing, ...fetched]);
+  emitHookOutput({ blocks, summaries: fetched.map((it) => it.summary) });
 }
 
 main().catch(() => process.exit(0));
