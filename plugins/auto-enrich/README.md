@@ -59,15 +59,26 @@ claude plugin disable auto-enrich@zhebil-tools
 
 ## Configuration
 
-Run `/auto-enrich:configure-auto-enrich` from inside Claude Code to
-set up or update the plugin. The skill explains what auto-enrich does,
-verifies your CLIs are installed and authenticated, helps you pick the
-Jira backend, writes `config.json`, and smoke-tests the hook
-end-to-end. It can also walk you through writing a custom provider.
+The plugin ships a guided setup skill. Inside Claude Code, type:
 
-The skill is user-invoked only - it won't auto-trigger from generic
-mentions of GitHub / Jira / Sentry. See
-[skills/configure-auto-enrich/SKILL.md](skills/configure-auto-enrich/SKILL.md).
+```text
+/auto-enrich:configure-auto-enrich
+```
+
+and press enter. Claude will walk you through:
+
+1. **Pick sources** - which of GitHub, Jira, Sentry you want enriched.
+2. **Verify CLIs** - install + auth checks for `gh`, `acli` / `jira`, `sentry`. Missing or unauthed CLIs get install-and-login instructions.
+3. **Pick the Jira backend** (only if Jira is enabled) - `acli` (default) or `jira-cli`.
+4. **Write `config.json`** - with a diff preview before anything is written.
+5. **Smoke test** - runs the hook end-to-end against a real reference of your choice and confirms the enrichment fires.
+6. **Optional: scaffold a custom provider** - copies an annotated example you can adapt for Linear / Shortcut / internal trackers.
+
+The skill is **user-invoked only** (`disable-model-invocation: true`) - Claude won't trigger it from generic mentions of GitHub / Jira / Sentry. You always have to type the slash command.
+
+If you skip configuration entirely, the plugin runs with defaults: every provider on, `acli` for Jira, no trusted projects.
+
+Source: [skills/configure-auto-enrich/SKILL.md](skills/configure-auto-enrich/SKILL.md).
 
 The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
 `~/.claude/auto-enrich.json` if `CLAUDE_PLUGIN_DATA` is not set):
