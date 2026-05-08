@@ -11,6 +11,14 @@ const INTERESTING_TAGS = new Set([
 ]);
 
 const STACK_FRAMES_TO_SHOW = 10;
+const MAX_BLOB_CHARS = 12000;
+const TRUNCATION_MARKER = "[…truncated]";
+
+function clip(text) {
+  const s = String(text ?? "");
+  if (s.length <= MAX_BLOB_CHARS) return s;
+  return `${s.slice(0, MAX_BLOB_CHARS)} ${TRUNCATION_MARKER}`;
+}
 
 /**
  * @typedef {Object} SentryMatch
@@ -61,7 +69,7 @@ export const sentryProvider = {
    * details (no stack trace / tags).
    *
    * @param {SentryMatch} match
-   * @param {{cwd: string, runner: Function}} ctx
+   * @param {import("./index.mjs").EnrichmentContext} ctx
    * @returns {Promise<string|null>}
    */
   async fetch(match, ctx) {
@@ -74,6 +82,7 @@ export const sentryProvider = {
     const issue = safeJsonParse(issueResp.stdout);
     if (!issue) return null;
 
+    if (ctx.budgetExceeded?.()) return null;
     const eventResp = await ctx.runner(
       "sentry",
       ["api", `/api/0/issues/${match.issueId}/events/latest/`],
@@ -119,7 +128,7 @@ function formatSentryIssue(id, issue, event) {
   if (assignee) lines.push(`- Assignee: ${assignee}`);
 
   const topMessage = asText(issue.metadata?.value ?? issue.message);
-  if (topMessage.trim()) lines.push("", "**Message:**", topMessage.trim());
+  if (topMessage.trim()) lines.push("", "**Message:**", clip(topMessage.trim()));
 
   if (event) appendEventDetails(lines, event, topMessage);
 
@@ -155,7 +164,7 @@ function appendEventDetails(lines, event, topMessage) {
       const head = value.module
         ? `${value.module}.${value.type ?? "Error"}`
         : value.type ?? "Error";
-      const val = asText(value.value);
+      const val = clip(asText(value.value));
       lines.push(`- ${head}${val ? `: ${val}` : ""}`);
       const frames = value.stacktrace?.frames ?? [];
       const top = frames.slice(-STACK_FRAMES_TO_SHOW).reverse();
@@ -174,7 +183,7 @@ function appendEventDetails(lines, event, topMessage) {
     const messageEntry = entries.find((entry) => entry.type === "message");
     const formatted = asText(messageEntry?.data?.formatted ?? messageEntry?.data?.message);
     if (formatted.trim() && formatted.trim() !== topMessage.trim()) {
-      lines.push("", "**Event message:**", formatted.trim());
+      lines.push("", "**Event message:**", clip(formatted.trim()));
     }
   }
 

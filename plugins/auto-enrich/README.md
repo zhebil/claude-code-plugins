@@ -30,13 +30,13 @@ Session dedupe state is stored under `${CLAUDE_PLUGIN_DATA}/seen.json` and conta
 
 ## How it works
 
-A `UserPromptSubmit` command hook runs:
+The plugin registers three Claude Code hooks (see `hooks/hooks.json`):
 
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/hooks/auto-enrich.mjs
-```
+- **`UserPromptSubmit`** -> `hooks/auto-enrich.mjs`. The main hook. Reads the submitted prompt JSON from stdin, detects references, fetches markdown via local CLIs, and emits the enriched context Claude sees.
+- **`SessionStart`** -> `hooks/discover.mjs`. Scans `~/.claude/auto-enrich/providers/` (and any trusted project dirs) for custom `*.provider.mjs` files, validates each against the contract, and writes a manifest the prompt hook reads.
+- **`SessionStart` (matcher: `compact`) and `PreCompact`** -> `hooks/compact-cleanup.mjs`. Stashes the session's seen-id list before a compaction and re-surfaces "previously attached" references after, so dedup state survives compaction without starving fresh refs.
 
-The hook reads the submitted prompt JSON from stdin, fetches matching references with local CLIs, and prints markdown to stdout. Claude Code injects stdout as context before the user prompt is processed.
+Claude Code injects the prompt hook's `additionalContext` as context before the user prompt is processed.
 
 ## Install
 
@@ -57,7 +57,7 @@ Then reload plugins or restart Claude Code:
 claude plugin disable auto-enrich@zhebil-tools
 ```
 
-## Configure
+## Configuration
 
 Run `/auto-enrich:configure` from inside Claude Code to view or edit the
 config file. The slash command shows the current state and walks you
@@ -73,16 +73,44 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
     "github-repo":  { "enabled": true },
     "jira":         { "enabled": true, "cli": "acli" },
     "sentry":       { "enabled": true }
-  }
+  },
+  "trustedProjects": []
 }
 ```
 
-- `enabled` defaults to `true` when omitted.
-- `jira.cli` selects the Jira CLI: `"acli"` (default) or `"jira-cli"`
-  (ankitpokhrel/jira-cli, binary `jira`). Unknown values fall back to `acli`.
-
 A missing or invalid file falls back to defaults (every provider on,
-acli for jira).
+acli for jira, no trusted projects).
+
+### Keys
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `providers.<name>.enabled` | boolean | `true` | When `false`, the provider's `prepare`/`detect`/`fetch` are not run. Built-in `<name>` values: `github-issue`, `github-repo`, `jira`, `sentry`. |
+| `providers.jira.cli` | `"acli" \| "jira-cli"` | `"acli"` | Backend CLI for the Jira provider. `"jira-cli"` selects ankitpokhrel/jira-cli (binary `jira`). Unknown values fall back to `"acli"`. |
+| `trustedProjects` | `string[]` | `[]` | Absolute project-root paths whose `<cwd>/.claude/auto-enrich/providers/*.provider.mjs` files are loaded at `SessionStart`. Match is exact against the resolved cwd - subdirectories of a trusted entry are NOT trusted. Honored only when set in the GLOBAL config; an in-repo config cannot grant itself trust. See [docs/custom-providers.md](docs/custom-providers.md#project-level-providers) for the security model. |
+
+Provider-specific keys (e.g. `jira.cli`) live under
+`providers.<name>` alongside `enabled`. Unknown keys are ignored, so
+adding a key for a future provider is safe.
+
+## Where data lives
+
+Claude Code sets `CLAUDE_PLUGIN_DATA` to a per-plugin cache directory
+when it runs the hook. Outside Claude Code (e.g. running the hook by
+hand for a smoke test), the fallbacks are `~/.claude/auto-enrich.json`
+for the config and `~/.cache/claude-auto-enrich/` for runtime files.
+The plugin writes:
+
+- `${CLAUDE_PLUGIN_DATA}/config.json` - user config (also at `~/.claude/auto-enrich.json` when the env var is unset).
+- `${CLAUDE_PLUGIN_DATA}/seen.json` - per-session dedup cache plus the post-compact stash.
+- `${CLAUDE_PLUGIN_DATA}/discovery.json` - manifest of validated custom-provider paths written by the `SessionStart` hook.
+
+## Debugging
+
+- Provider warnings (validation failures, modules that no longer satisfy the contract, unreadable directories) are written to stderr as lines beginning `auto-enrich:`. The visible enrichment summary uses the `Auto-enriched:` prefix.
+- `cat $CLAUDE_PLUGIN_DATA/discovery.json` shows exactly which custom providers `SessionStart` validated and the source (`global` vs `project`) of each entry.
+- `cat $CLAUDE_PLUGIN_DATA/seen.json` shows the per-session dedup cache and the post-compact stash.
+- Run the prompt hook directly with a temp data dir to see the full envelope without touching your real session cache - see [Test the hook directly](#test-the-hook-directly) below.
 
 ## Custom providers
 

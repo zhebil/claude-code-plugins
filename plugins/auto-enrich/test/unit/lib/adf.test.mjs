@@ -125,4 +125,29 @@ describe("descriptionToMarkdown", () => {
     assert.equal(out, "hello");
     assert.ok(!out.includes("```json"));
   });
+
+  it("caps deeply nested ADF without blowing the stack", () => {
+    let node = text("leaf");
+    for (let i = 0; i < 5000; i++) {
+      node = { type: "blockquote", content: [node] };
+    }
+    const adf = doc(node);
+    const out = descriptionToMarkdown(adf);
+    assert.match(out, /truncated: ADF too deeply nested/);
+  });
+
+  it("caps oversize output at 12K chars with a truncation marker", () => {
+    const big = "x".repeat(20000);
+    const adf = doc(para(text(big)));
+    const out = descriptionToMarkdown(adf);
+    assert.ok(out.length <= 12000 + 50, `output too long: ${out.length}`);
+    assert.match(out, /\[…truncated\]/);
+  });
+
+  it("caps oversize plain string descriptions", () => {
+    const big = "y".repeat(20000);
+    const out = descriptionToMarkdown(big);
+    assert.ok(out.length <= 12000 + 50, `output too long: ${out.length}`);
+    assert.match(out, /\[…truncated\]/);
+  });
 });

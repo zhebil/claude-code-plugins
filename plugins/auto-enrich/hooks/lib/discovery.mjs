@@ -133,27 +133,16 @@ export async function discoverProviders({ builtinNames, dir = getDiscoveryDir(),
 }
 
 /**
- * Import a candidate file and verify the exported object satisfies the
- * provider contract. Returns `{ ok: true, name }` on success or
- * `{ ok: false, reason }` on any structural failure. Never throws.
+ * Verify a resolved provider object satisfies the contract. Pure - does
+ * no I/O, just shape checks. Used by both `validateProviderFile` (which
+ * loads the module first) and `loadCustomProviders` (defense-in-depth
+ * re-check at prompt time).
  *
- * Side effects: none on disk; the dynamic import does load the module
- * code, which is unavoidable - validation requires inspecting the
- * exported object.
- *
- * @param {string} absPath
- * @param {Set<string>} reservedNames Names already taken (built-ins +
- *   previously-validated custom providers).
- * @returns {Promise<{ok: true, name: string} | {ok: false, reason: string}>}
+ * @param {*} provider Candidate object (may be anything).
+ * @param {Set<string>} reservedNames Names already taken.
+ * @returns {{ok: true, name: string} | {ok: false, reason: string}}
  */
-export async function validateProviderFile(absPath, reservedNames) {
-  let mod;
-  try {
-    mod = await import(pathToFileURL(absPath).href);
-  } catch (error) {
-    return { ok: false, reason: `import failed (${error?.message ?? error})` };
-  }
-  const provider = mod.default ?? mod.provider;
+export function validateProviderObject(provider, reservedNames) {
   if (!provider || typeof provider !== "object") {
     return { ok: false, reason: "no default export or named `provider` export" };
   }
@@ -178,6 +167,31 @@ export async function validateProviderFile(absPath, reservedNames) {
     return { ok: false, reason: "prepare must be a function when present" };
   }
   return { ok: true, name: provider.name };
+}
+
+/**
+ * Import a candidate file and verify the exported object satisfies the
+ * provider contract. Returns `{ ok: true, name }` on success or
+ * `{ ok: false, reason }` on any structural failure. Never throws.
+ *
+ * Side effects: none on disk; the dynamic import does load the module
+ * code, which is unavoidable - validation requires inspecting the
+ * exported object.
+ *
+ * @param {string} absPath
+ * @param {Set<string>} reservedNames Names already taken (built-ins +
+ *   previously-validated custom providers).
+ * @returns {Promise<{ok: true, name: string} | {ok: false, reason: string}>}
+ */
+export async function validateProviderFile(absPath, reservedNames) {
+  let mod;
+  try {
+    mod = await import(pathToFileURL(absPath).href);
+  } catch (error) {
+    return { ok: false, reason: `import failed (${error?.message ?? error})` };
+  }
+  const provider = mod.default ?? mod.provider;
+  return validateProviderObject(provider, reservedNames);
 }
 
 /**
@@ -290,16 +304,8 @@ export async function loadCustomProviders(builtinNames, { allowProject = true } 
       continue;
     }
     const provider = mod.default ?? mod.provider;
-    if (
-      !provider
-      || provider.apiVersion !== SUPPORTED_API_VERSION
-      || typeof provider.name !== "string"
-      || !provider.name
-      || taken.has(provider.name)
-      || typeof provider.detect !== "function"
-      || typeof provider.fetch !== "function"
-      || typeof provider.summarize !== "function"
-    ) {
+    const result = validateProviderObject(provider, taken);
+    if (!result.ok) {
       process.stderr.write(`auto-enrich: ${path} no longer satisfies provider contract; skipping\n`);
       continue;
     }

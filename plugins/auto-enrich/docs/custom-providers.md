@@ -36,9 +36,23 @@ name (see [Replacing a built-in](#replacing-a-built-in)).
 >
 > Adding, editing, or removing a provider file requires a new Claude
 > Code session for the change to take effect (the manifest is written
-> at session start, not re-scanned per prompt).
+> at session start, not re-scanned per prompt). "New session" means
+> closing and reopening the TUI - i.e. `/exit` then `claude` again, or
+> quitting the terminal window. `/reload-plugins` does **not** re-run
+> `SessionStart`, so it will not pick up new or edited
+> `*.provider.mjs` files.
 
 ### Project-level providers
+
+> **Warning:** Adding a path to `trustedProjects` is equivalent to
+> granting that repository execute-on-session-start privileges in your
+> Claude Code environment. Any `.claude/auto-enrich/providers/*.provider.mjs`
+> checked in to that repo - including files added by future commits or
+> merged pull requests - will be dynamic-imported, and its top-level
+> code will run inside the hook's Node process with access to your
+> working tree, environment, and any tokens local CLIs (`gh`, `acli`,
+> `sentry`) can reach. Trust only repositories whose contributor list
+> is fully under your control.
 
 A project can ship its own providers under
 `<projectRoot>/.claude/auto-enrich/providers/*.provider.mjs`, but the
@@ -121,7 +135,7 @@ export default {
 
 | Field         | Type        | Notes |
 |---------------|-------------|-------|
-| `apiVersion`  | `1`         | Forward-compat sentinel. Must be `1`. The plugin will reject other values without trying to load the module. |
+| `apiVersion`  | `1`         | Forward-compat sentinel. Must be `1`. The plugin will reject other values without trying to load the module. Bumping this number is how the plugin will introduce breaking contract changes; future versions are expected to support multiple `apiVersion` values side-by-side so old providers keep working. |
 | `name`        | `string`    | Stable id, non-empty. Doubles as the key under `ctx.state` and `config.providers`. Must NOT collide with any built-in (`github-issue`, `github-repo`, `jira`, `sentry`) or any earlier-loaded custom provider. |
 | `detect`      | `function`  | Synchronous reference detector. See [`detect`](#detecttext-coderanges-ctx-match). |
 | `fetch`       | `function`  | Async fetcher returning markdown or `null`. See [`fetch`](#fetchmatch-ctx-promisestringnull). |
@@ -434,6 +448,11 @@ export default {
 };
 ```
 
+> **Caveat.** `KEY_PATTERN` here matches any `ABC-123`-style key, which
+> collides with the built-in `jira` detector. In practice you'll want
+> a Linear-specific prefix (e.g. `LIN-`, `ENG-`) or to disable the
+> `jira` provider via config so the same key isn't enriched twice.
+
 ### Replacing a built-in
 
 The orchestrator runs custom providers **after** built-ins, and
@@ -487,7 +506,9 @@ the same way the built-ins do - see
 - **No TypeScript.** Files are loaded with raw `node`, so `.provider.ts`
   is not supported. Use `.provider.mjs` and JSDoc types.
 - **No live reload.** Adding, editing, or removing a file requires a
-  fresh Claude Code session for `SessionStart` to re-scan.
+  fresh Claude Code session for `SessionStart` to re-scan. That means
+  closing and reopening the TUI (`/exit` then `claude`); `/reload-plugins`
+  does not re-fire `SessionStart`.
 - **Project-level discovery is opt-in.** A repository's
   `.claude/auto-enrich/providers/` is loaded only when the project's
   absolute path appears in `trustedProjects` in the user's global

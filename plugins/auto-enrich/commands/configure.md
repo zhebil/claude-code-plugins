@@ -12,7 +12,7 @@ The config lives at `$CLAUDE_PLUGIN_DATA/config.json` when that env var is set
 
 ## Current state
 
-!ls -la "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || echo "(no config file yet — defaults apply: every provider enabled)"
+!ls -la "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || echo "(no config file yet - defaults apply: every provider enabled)"
 
 !cat "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || true
 

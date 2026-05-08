@@ -1,3 +1,8 @@
+const MAX_DEPTH = 100;
+const MAX_OUTPUT_CHARS = 12000;
+const DEPTH_TRUNCATION_MARKER = "[…truncated: ADF too deeply nested]";
+const LENGTH_TRUNCATION_MARKER = "[…truncated]";
+
 /**
  * Recursively render an Atlassian Document Format (ADF) node tree to
  * markdown. Handles the subset Jira returns from `acli jira workitem view
@@ -8,16 +13,24 @@
  * usually right (the parent is a layout container) and degrades gracefully
  * when Atlassian adds new node types we haven't seen.
  *
+ * Depth is bounded at MAX_DEPTH so a hostile or pathological ADF tree
+ * cannot blow the stack. When the cap is hit, a truncation marker is
+ * emitted in place of the deep subtree.
+ *
  * @param {*} node ADF node, child array, string, or `null`.
+ * @param {number} [depth] Current recursion depth.
  * @returns {string} Markdown text. Trailing whitespace is left to the caller.
  */
-function renderAdfNode(node) {
+function renderAdfNode(node, depth = 0) {
+  if (depth > MAX_DEPTH) return DEPTH_TRUNCATION_MARKER;
   if (node == null) return "";
   if (typeof node === "string") return node;
-  if (Array.isArray(node)) return node.map(renderAdfNode).join("");
+  if (Array.isArray(node)) return node.map((child) => renderAdfNode(child, depth + 1)).join("");
 
   const renderChildren = () =>
-    Array.isArray(node.content) ? node.content.map(renderAdfNode).join("") : "";
+    Array.isArray(node.content)
+      ? node.content.map((child) => renderAdfNode(child, depth + 1)).join("")
+      : "";
 
   switch (node.type) {
     case "doc":
@@ -40,7 +53,7 @@ function renderAdfNode(node) {
         items
           .map((item, i) => {
             const marker = ordered ? `${i + 1}.` : "-";
-            const body = renderAdfNode(item).trim();
+            const body = renderAdfNode(item, depth + 1).trim();
             return body
               .split("\n")
               .map((line, idx) => (idx === 0 ? `${marker} ${line}` : `  ${line}`))
@@ -92,7 +105,7 @@ function renderAdfNode(node) {
       const rendered = rows.map((row) => {
         const cells = Array.isArray(row.content) ? row.content : [];
         return cells
-          .map((cell) => renderAdfNode(cell).trim().replace(/\n+/g, " ").replace(/\|/g, "\\|"))
+          .map((cell) => renderAdfNode(cell, depth + 1).trim().replace(/\n+/g, " ").replace(/\|/g, "\\|"))
           .join(" | ");
       });
       const header = rendered[0] ?? "";
@@ -131,10 +144,6 @@ function renderAdfNode(node) {
       return out;
     }
     default: {
-      // Unknown node type. If it has render-able children, fall through to
-      // those (handles new wrapper node types Atlassian may add). Otherwise
-      // surface it as a JSON code block so the user can still see what
-      // shipped, even if we don't know how to format it.
       const rendered = renderChildren();
       if (rendered.trim()) return rendered;
       return `\n\`\`\`json\n${JSON.stringify(node, null, 2)}\n\`\`\`\n\n`;
@@ -145,16 +154,22 @@ function renderAdfNode(node) {
 /**
  * Convert a Jira description field to markdown. Accepts either a plain
  * string (legacy Jira REST shape) or an ADF document object. Collapses
- * runs of 3+ blank lines to keep output compact.
+ * runs of 3+ blank lines to keep output compact, and caps the final
+ * output at MAX_OUTPUT_CHARS to bound memory for hostile descriptions.
  *
  * @param {string | Object | null | undefined} description
  * @returns {string} Trimmed markdown, or `""` when input is empty/unknown.
  */
 export function descriptionToMarkdown(description) {
   if (description == null) return "";
-  if (typeof description === "string") return description.trim();
+  if (typeof description === "string") return capLength(description.trim());
   if (typeof description === "object" && description.type) {
-    return renderAdfNode(description).replace(/\n{3,}/g, "\n\n").trim();
+    return capLength(renderAdfNode(description).replace(/\n{3,}/g, "\n\n").trim());
   }
   return "";
+}
+
+function capLength(text) {
+  if (text.length <= MAX_OUTPUT_CHARS) return text;
+  return `${text.slice(0, MAX_OUTPUT_CHARS)}\n\n${LENGTH_TRUNCATION_MARKER}`;
 }

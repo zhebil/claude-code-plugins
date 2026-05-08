@@ -39,6 +39,8 @@ import { sentryProvider } from "./sentry.mjs";
 
 /**
  * @typedef {Object} Provider
+ * @property {1} [apiVersion] Required for custom providers loaded via
+ *   discovery (must be `1`). Built-ins skip this check.
  * @property {string} name Stable identifier; doubles as the key under
  *   `ctx.state` for this provider's scratch space.
  *

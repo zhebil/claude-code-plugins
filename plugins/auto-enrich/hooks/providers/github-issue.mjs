@@ -116,6 +116,7 @@ export const githubIssueProvider = {
     const isPullRequest = !!data.pull_request;
     let prDetails = null;
     if (isPullRequest) {
+      if (ctx.budgetExceeded?.()) return null;
       const prResp = await ctx.runner(
         "gh",
         [

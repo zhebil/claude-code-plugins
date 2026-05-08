@@ -67,13 +67,14 @@ export const githubRepoProvider = {
    * returns `null` when both lookups fail.
    *
    * @param {GithubRepoMatch} match
-   * @param {{cwd: string, runner: Function}} ctx
+   * @param {import("./index.mjs").EnrichmentContext} ctx
    * @returns {Promise<string|null>}
    */
   async fetch(match, ctx) {
     const { owner, repo } = match;
     const metaResp = await ctx.runner("gh", ["api", `repos/${owner}/${repo}`], { cwd: ctx.cwd });
     const meta = metaResp.code === 0 ? safeJsonParse(metaResp.stdout) : null;
+    if (ctx.budgetExceeded?.()) return null;
     const readmeResp = await ctx.runner(
       "gh",
       ["api", `repos/${owner}/${repo}/readme`, "-H", "Accept: application/vnd.github.raw"],

@@ -8,6 +8,7 @@ import {
   loadCustomProviders,
   readManifest,
   validateProviderFile,
+  validateProviderObject,
   writeManifest,
   getManifestPath,
 } from "../../../hooks/lib/discovery.mjs";
@@ -38,6 +39,55 @@ export default {
   summarize(match) { return ${JSON.stringify(name)}; },
 };
 `;
+
+describe("validateProviderObject", () => {
+  const valid = () => ({
+    apiVersion: 1,
+    name: "x",
+    detect: () => [],
+    fetch: async () => null,
+    summarize: () => "",
+  });
+
+  it("accepts a well-formed object", () => {
+    assert.deepEqual(validateProviderObject(valid(), new Set()), { ok: true, name: "x" });
+  });
+
+  it("rejects null/undefined", () => {
+    const r = validateProviderObject(null, new Set());
+    assert.equal(r.ok, false);
+  });
+
+  it("rejects wrong apiVersion", () => {
+    const p = valid();
+    p.apiVersion = 2;
+    const r = validateProviderObject(p, new Set());
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /apiVersion/);
+  });
+
+  it("rejects collision", () => {
+    const r = validateProviderObject(valid(), new Set(["x"]));
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /collides/);
+  });
+
+  it("rejects missing required functions", () => {
+    const p = valid();
+    delete p.fetch;
+    const r = validateProviderObject(p, new Set());
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /fetch/);
+  });
+
+  it("rejects non-function prepare when present", () => {
+    const p = valid();
+    p.prepare = "no";
+    const r = validateProviderObject(p, new Set());
+    assert.equal(r.ok, false);
+    assert.match(r.reason, /prepare/);
+  });
+});
 
 describe("validateProviderFile", () => {
   it("accepts a well-formed default export", async () => {

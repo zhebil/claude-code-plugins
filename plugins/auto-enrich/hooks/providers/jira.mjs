@@ -35,7 +35,11 @@ const DEFAULT_BACKEND = "acli";
  * @typedef {Object} JiraBackend
  * @property {(key: string, ctx: import("./index.mjs").EnrichmentContext) => Promise<JiraNormalizedIssue|null>} fetch
  *   Run the CLI and return a normalized issue, or `null` on any failure
- *   (CLI not installed, auth missing, 404, parse error).
+ *   (CLI not installed, auth missing, 404, parse error). The acli backend
+ *   passes the raw response through (it already matches
+ *   {@link JiraNormalizedIssue} closely enough for the formatter), while
+ *   jira-cli normalizes via {@link normalizeJiraCli} to bridge schema
+ *   differences (e.g. `issueType` vs `issuetype`).
  * @property {(key: string) => string} refetchHint
  *   Shell command the user can run to refetch with comments. Rendered
  *   verbatim into the markdown footer so the suggestion matches the

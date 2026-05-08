@@ -15,6 +15,7 @@ function readStdin() {
       data += chunk;
     });
     process.stdin.on("end", () => resolve(data));
+    process.stdin.on("error", () => resolve(""));
   });
 }
 
