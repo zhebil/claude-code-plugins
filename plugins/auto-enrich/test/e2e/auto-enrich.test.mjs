@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 async function writeConfig(dir, payload) {
   await writeFile(join(dir, "config.json"), JSON.stringify(payload));
+}
+
+async function writeProjectConfig(projectRoot, payload) {
+  await mkdir(join(projectRoot, ".claude"), { recursive: true });
+  await writeFile(join(projectRoot, ".claude", "auto-enrich.json"), JSON.stringify(payload));
 }
 
 async function writeManifest(dir, paths) {
@@ -557,6 +562,106 @@ esac
     assert.equal(code, 0);
     assert.equal(stdout, "");
     assert.equal(stderr, "");
+  });
+
+  it("project-local config disables a globally-enabled provider", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projcfg-"));
+    await writeStub("acli", `echo "should not be called" >&2; exit 99`);
+    // Global config: jira explicitly enabled.
+    await writeConfig(cacheDir, { providers: { jira: { enabled: true } } });
+    // Project config: jira disabled. Project should win.
+    await writeProjectConfig(projectDir, { providers: { jira: { enabled: false } } });
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-projcfg-1",
+      cwd: projectDir,
+      user_prompt: "blocked by PROJ-1",
+    });
+
+    await rm(projectDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+  });
+
+  it("project-local config can switch jira backend without disabling", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projcli-"));
+    await writeStub("acli", `echo "should not be called" >&2; exit 99`);
+    await writeStub(
+      "jira",
+      `
+case "$*" in
+  "issue list --jql key = PROJ-1 --raw --paginate 0:1")
+    cat <<'JSON'
+[{"key":"PROJ-1","fields":{"summary":"Title","issueType":{"name":"Bug"},"status":{"name":"Open"},"assignee":{"displayName":"Alice"}}}]
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+    // Global says acli; project flips to jira-cli.
+    await writeConfig(cacheDir, { providers: { jira: { enabled: true, cli: "acli" } } });
+    await writeProjectConfig(projectDir, { providers: { jira: { cli: "jira-cli" } } });
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-projcli-1",
+      cwd: projectDir,
+      user_prompt: "look at PROJ-1",
+    });
+
+    await rm(projectDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: jira PROJ-1/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Type: Bug/);
+  });
+
+  it("project-local config CANNOT grant trust to itself (trustedProjects ignored)", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projtrust-"));
+    const providerPath = join(projectDir, "team.provider.mjs");
+    await writeFile(
+      providerPath,
+      `
+        const PATTERN = /\\b(TEAM-\\d+)\\b/g;
+        export default {
+          apiVersion: 1,
+          name: "team",
+          detect(text) {
+            const out = [];
+            for (const m of text.matchAll(PATTERN)) {
+              out.push({ id: "team:" + m[1], key: m[1] });
+            }
+            return out;
+          },
+          async fetch() { return "#### should not run"; },
+          summarize() { return "team"; },
+        };
+      `,
+    );
+    // Project is on the manifest as a project-source provider.
+    await writeManifestEntries(cacheDir, [{ path: providerPath, source: "project" }]);
+    // The project tries to trust itself - this MUST be ignored.
+    await writeProjectConfig(projectDir, { trustedProjects: [projectDir] });
+    // No trustedProjects in the global config.
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-projtrust-1",
+      cwd: projectDir,
+      user_prompt: "fix TEAM-7",
+    });
+
+    await rm(projectDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    // Stderr should contain a single warning that trustedProjects in project config was ignored.
+    assert.match(stderr, /trustedProjects/);
   });
 
   it("does not starve fresh refs when seen-cache is full (cap applied after seen filter)", async () => {

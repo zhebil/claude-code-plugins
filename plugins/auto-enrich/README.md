@@ -96,6 +96,33 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
 A missing or invalid file falls back to defaults (every provider on,
 acli for jira, no trusted projects).
 
+### Per-project overrides
+
+You can also drop a config at `<projectRoot>/.claude/auto-enrich.json` to
+override the global config when working inside that repo. Useful for
+turning off Jira or Sentry just in one project, or pinning a different
+Jira backend per repo.
+
+Merge granularity is one level inside `providers.<name>`: a project file
+that says `{ "providers": { "jira": { "enabled": false } } }` does NOT
+wipe out the global `cli` setting, both keys coexist with project values
+winning on overlap.
+
+```jsonc
+// <projectRoot>/.claude/auto-enrich.json
+{
+  "providers": {
+    "jira":   { "enabled": false },
+    "sentry": { "enabled": false }
+  }
+}
+```
+
+`trustedProjects` is **silently ignored** when set in a project file - a
+repo cannot grant itself custom-provider execution trust by editing its
+own checked-in config. Trust is read only from the global config (same
+threat model as before).
+
 ### Keys
 
 | Key | Type | Default | Effect |

@@ -89,7 +89,7 @@ The config schema, for reference:
 
 Defaults when keys are missing: every provider on, `jira.cli` = `"acli"`, no trusted projects.
 
-**A scope limitation worth knowing**: there are no per-project provider toggles. `enabled` and `cli` are global. If a user asks to "disable Jira just in this repo", be honest that the config doesn't support it and offer the workaround (disable globally, or simply don't paste Jira keys here).
+**Per-project overrides**: dropping a config at `<projectRoot>/.claude/auto-enrich.json` overrides the global config when working inside that repo. Useful for "disable Jira just in this repo" or "use jira-cli here, acli everywhere else". Merge granularity is one level inside `providers.<name>` - a project file with `{ "providers": { "jira": { "enabled": false } } }` does NOT wipe out the global `cli` setting; both keys coexist with project values winning on overlap. **`trustedProjects` is silently ignored when set in a project file** - a repo cannot grant itself custom-provider execution trust. When a user asks for a per-repo change, prefer writing the project file over editing the global one.
 
 ### 5. Custom providers (only if the user asks)
 

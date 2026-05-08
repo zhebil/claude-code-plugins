@@ -120,3 +120,111 @@ export function isProjectTrusted(config, cwd) {
   }
   return false;
 }
+
+/**
+ * Resolve the project-local config path. Project config sits at
+ * `<cwd>/.claude/auto-enrich.json`, alongside the existing
+ * `<cwd>/.claude/auto-enrich/providers/` convention.
+ *
+ * @param {string} cwd
+ * @returns {string|null} Absolute path, or null if cwd is unusable.
+ */
+export function getProjectConfigPath(cwd) {
+  if (typeof cwd !== "string" || !cwd) return null;
+  return join(resolve(cwd), ".claude", "auto-enrich.json");
+}
+
+/**
+ * Load a project-local config. Same lenient behavior as `loadConfig`
+ * (missing/unreadable/invalid file -> `{}`).
+ *
+ * `trustedProjects` is stripped before returning: a project must not be
+ * able to grant itself custom-provider execution trust by editing its
+ * own checked-in config. This is the same threat model that already
+ * keeps trust read-only-from-global elsewhere; centralizing the strip
+ * here means callers can't forget. A non-empty `trustedProjects` in a
+ * project file emits a one-line stderr warning so the user notices it
+ * was ignored rather than honored.
+ *
+ * @param {string} cwd
+ * @returns {Promise<AutoEnrichConfig>}
+ */
+export async function loadProjectConfig(cwd) {
+  const path = getProjectConfigPath(cwd);
+  if (!path) return {};
+  let raw;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if (error?.code !== "ENOENT") {
+      process.stderr.write(`auto-enrich: project config read failed (${error?.code ?? error}); ignoring\n`);
+    }
+    return {};
+  }
+  const parsed = safeJsonParse(raw);
+  if (!parsed || typeof parsed !== "object") return {};
+  if (Array.isArray(parsed.trustedProjects) && parsed.trustedProjects.length > 0) {
+    process.stderr.write("auto-enrich: project config sets `trustedProjects`; ignored (trust must be granted from the global config)\n");
+  }
+  const { trustedProjects: _ignored, ...rest } = parsed;
+  return rest;
+}
+
+/**
+ * Merge a project config on top of the global config.
+ *
+ * Merge granularity is one level inside `providers.<name>`: a project
+ * file that says `{ providers: { jira: { enabled: false } } }` does NOT
+ * wipe out the global `cli` setting on the same provider; both keys
+ * coexist with project values winning on overlap.
+ *
+ * Top-level non-`providers` keys from the project config also win, but
+ * `trustedProjects` is intentionally absent (stripped by
+ * `loadProjectConfig`) so this function cannot be tricked into honoring
+ * project-granted trust.
+ *
+ * Either argument may be null/undefined - treat as `{}`.
+ *
+ * @param {AutoEnrichConfig|null|undefined} global
+ * @param {AutoEnrichConfig|null|undefined} project
+ * @returns {AutoEnrichConfig}
+ */
+export function mergeConfigs(global, project) {
+  const g = global && typeof global === "object" ? global : {};
+  const p = project && typeof project === "object" ? project : {};
+  const merged = { ...g, ...p };
+
+  const gProviders = g.providers && typeof g.providers === "object" ? g.providers : {};
+  const pProviders = p.providers && typeof p.providers === "object" ? p.providers : {};
+  const providerNames = new Set([...Object.keys(gProviders), ...Object.keys(pProviders)]);
+  if (providerNames.size > 0) {
+    const mergedProviders = {};
+    for (const name of providerNames) {
+      const gEntry = gProviders[name] && typeof gProviders[name] === "object" ? gProviders[name] : {};
+      const pEntry = pProviders[name] && typeof pProviders[name] === "object" ? pProviders[name] : {};
+      mergedProviders[name] = { ...gEntry, ...pEntry };
+    }
+    merged.providers = mergedProviders;
+  }
+
+  if (Array.isArray(g.trustedProjects)) {
+    merged.trustedProjects = g.trustedProjects;
+  }
+
+  return merged;
+}
+
+/**
+ * Convenience wrapper: load the global config, load the project config
+ * (if any), and return the merged result. Use this everywhere a
+ * provider-config decision is being made; use `loadConfig` directly
+ * only when the caller specifically needs the global-only view (e.g.
+ * `isProjectTrusted`, which must NEVER consult the project config).
+ *
+ * @param {string} cwd
+ * @returns {Promise<{ global: AutoEnrichConfig, project: AutoEnrichConfig, effective: AutoEnrichConfig }>}
+ */
+export async function loadEffectiveConfig(cwd) {
+  const [global, project] = await Promise.all([loadConfig(), loadProjectConfig(cwd)]);
+  return { global, project, effective: mergeConfigs(global, project) };
+}

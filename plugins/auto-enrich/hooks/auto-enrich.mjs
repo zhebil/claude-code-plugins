@@ -3,7 +3,7 @@ import { runCommand } from "./lib/run.mjs";
 import { safeJsonParse } from "./lib/json.mjs";
 import { findCodeRanges } from "./lib/code-ranges.mjs";
 import { loadSeenIds, saveSeenItems } from "./lib/cache.mjs";
-import { loadConfig, isProviderEnabled, getProviderConfig, isProjectTrusted } from "./lib/config.mjs";
+import { loadEffectiveConfig, isProviderEnabled, getProviderConfig, isProjectTrusted } from "./lib/config.mjs";
 import { loadCustomProviders } from "./lib/discovery.mjs";
 import { providers } from "./providers/index.mjs";
 
@@ -189,15 +189,19 @@ async function main() {
   const cwd = input.cwd || process.cwd();
   const sessionId = input.session_id || "ephemeral";
   const codeRanges = findCodeRanges(userPrompt);
-  const config = await loadConfig();
+  // `global` is used for the trust check (project files must never grant
+  // themselves trust); `effective` (global + project merge) drives every
+  // other config decision, so per-provider toggles and CLI choices can
+  // be overridden per-repo.
+  const { global, effective } = await loadEffectiveConfig(cwd);
   const builtinNames = new Set(providers.map((p) => p.name));
   const custom = await loadCustomProviders(builtinNames, {
-    allowProject: isProjectTrusted(config, cwd),
+    allowProject: isProjectTrusted(global, cwd),
   });
   const allProviders = [...providers, ...custom];
-  const active = allProviders.filter((p) => isProviderEnabled(config, p.name));
+  const active = allProviders.filter((p) => isProviderEnabled(effective, p.name));
   if (!active.length) return;
-  const ctx = buildContext(cwd, config);
+  const ctx = buildContext(cwd, effective);
 
   await prepareProviders(active, userPrompt, ctx);
 
