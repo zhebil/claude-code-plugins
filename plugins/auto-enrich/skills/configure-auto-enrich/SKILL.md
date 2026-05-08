@@ -1,6 +1,6 @@
 ---
-name: configure
-description: Set up and configure the auto-enrich plugin - verify CLIs, pick the Jira backend, write config.json, smoke test the hook, and (optionally) scaffold a custom provider. Use ONLY when the user explicitly invokes this skill via `/auto-enrich:configure` or asks to set up / configure / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, Jira, Sentry, or "context enrichment".
+name: configure-auto-enrich
+description: Set up and configure the auto-enrich plugin - verify CLIs, pick the Jira backend, write config.json, smoke test the hook, and (optionally) scaffold a custom provider. Use ONLY when the user explicitly invokes this skill via `/auto-enrich:configure-auto-enrich` or asks to set up / configure / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, Jira, Sentry, or "context enrichment".
 user-invocable: true
 disable-model-invocation: true
 ---

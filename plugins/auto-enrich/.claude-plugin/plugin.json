@@ -1,6 +1,6 @@
 {
   "name": "auto-enrich",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Auto-enrich user prompts with context for Jira tickets, GitHub PRs/issues/repos, and Sentry issues.",
   "author": {
     "name": "Zhebil"
