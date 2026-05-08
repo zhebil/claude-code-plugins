@@ -3,6 +3,7 @@ import { runCommand } from "./lib/run.mjs";
 import { safeJsonParse } from "./lib/json.mjs";
 import { findCodeRanges } from "./lib/code-ranges.mjs";
 import { loadSeenIds, saveSeenIds } from "./lib/cache.mjs";
+import { loadConfig, isProviderEnabled, getProviderConfig } from "./lib/config.mjs";
 import { providers } from "./providers/index.mjs";
 
 const MAX_MATCHES_PER_PROMPT = 8;
@@ -28,31 +29,34 @@ function readStdin() {
  * Build the per-prompt enrichment context shared by every provider.
  *
  * @param {string} cwd Working directory passed by Claude Code.
+ * @param {import("./lib/config.mjs").AutoEnrichConfig} config
  * @returns {import("./providers/index.mjs").EnrichmentContext}
  */
-function buildContext(cwd) {
+function buildContext(cwd, config) {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   return {
     cwd,
     runner: runCommand,
     state: {},
     budgetExceeded: () => Date.now() >= deadline,
+    providerConfig: (name) => getProviderConfig(config, name),
   };
 }
 
 /**
- * Run every registered provider's `prepare()` lifecycle hook in parallel.
+ * Run every active provider's `prepare()` lifecycle hook in parallel.
  * `prepare()` is optional and is responsible for stashing per-prompt
  * scratch state under `ctx.state[provider.name]` (e.g. github-issue
  * resolves the cwd's default repo here).
  *
+ * @param {import("./providers/index.mjs").Provider[]} active
  * @param {string} text User prompt.
  * @param {import("./providers/index.mjs").EnrichmentContext} ctx
  * @returns {Promise<void>}
  */
-async function prepareProviders(text, ctx) {
+async function prepareProviders(active, text, ctx) {
   await Promise.all(
-    providers.map(async (provider) => {
+    active.map(async (provider) => {
       if (typeof provider.prepare !== "function") return;
       try {
         await provider.prepare(text, ctx);
@@ -63,17 +67,18 @@ async function prepareProviders(text, ctx) {
 }
 
 /**
- * Run every registered provider's detector and return a flat,
+ * Run every active provider's detector and return a flat,
  * dedup-by-id list of `{provider, match}` items in detection order.
  *
+ * @param {import("./providers/index.mjs").Provider[]} active
  * @param {string} text
  * @param {[number, number][]} codeRanges
  * @param {import("./providers/index.mjs").EnrichmentContext} ctx
  * @returns {Array<{provider: import("./providers/index.mjs").Provider, match: import("./providers/index.mjs").Match}>}
  */
-function detectMatchesAcrossProviders(text, codeRanges, ctx) {
+function detectMatchesAcrossProviders(active, text, codeRanges, ctx) {
   const collected = [];
-  for (const provider of providers) {
+  for (const provider of active) {
     for (const match of provider.detect(text, codeRanges, ctx)) {
       collected.push({ provider, match });
     }
@@ -165,11 +170,14 @@ async function main() {
   const cwd = input.cwd || process.cwd();
   const sessionId = input.session_id || "ephemeral";
   const codeRanges = findCodeRanges(userPrompt);
-  const ctx = buildContext(cwd);
+  const config = await loadConfig();
+  const active = providers.filter((p) => isProviderEnabled(config, p.name));
+  if (!active.length) return;
+  const ctx = buildContext(cwd, config);
 
-  await prepareProviders(userPrompt, ctx);
+  await prepareProviders(active, userPrompt, ctx);
 
-  const detected = detectMatchesAcrossProviders(userPrompt, codeRanges, ctx);
+  const detected = detectMatchesAcrossProviders(active, userPrompt, codeRanges, ctx);
   if (!detected.length) return;
 
   const { allSessions, seen } = await loadSeenIds(sessionId);

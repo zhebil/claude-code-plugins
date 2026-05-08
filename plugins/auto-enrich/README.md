@@ -57,6 +57,29 @@ Then reload plugins or restart Claude Code:
 claude plugin disable auto-enrich@zhebil-tools
 ```
 
+## Configure
+
+Run `/auto-enrich:configure` from inside Claude Code to view or edit the
+config file. The slash command shows the current state and walks you
+through updates.
+
+The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
+`~/.claude/auto-enrich.json` if `CLAUDE_PLUGIN_DATA` is not set):
+
+```jsonc
+{
+  "providers": {
+    "github-issue": { "enabled": true },
+    "github-repo":  { "enabled": true },
+    "jira":         { "enabled": true },
+    "sentry":       { "enabled": true }
+  }
+}
+```
+
+`enabled` defaults to `true` when omitted. A missing or invalid file
+falls back to defaults (every provider on).
+
 ## Test the hook directly
 
 ```bash

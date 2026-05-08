@@ -25,6 +25,9 @@ import { sentryProvider } from "./sentry.mjs";
  * @property {() => boolean} budgetExceeded Returns `true` once the
  *   orchestrator's wall-clock budget has been exhausted. Long-running
  *   `fetch()` paths may consult this to bail early.
+ * @property {(name: string) => Object} providerConfig Returns the
+ *   provider's user config sub-object (always an object, possibly
+ *   empty). Read provider-specific keys from here, e.g. `cli`.
  */
 
 /**

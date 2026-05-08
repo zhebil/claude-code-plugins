@@ -6,6 +6,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+async function writeConfig(dir, payload) {
+  await writeFile(join(dir, "config.json"), JSON.stringify(payload));
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOOK_PATH = resolve(HERE, "../../hooks/auto-enrich.mjs");
 
@@ -313,6 +317,53 @@ esac
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Issue me\/proj#3: Bug/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
+  });
+
+  it("skips a provider when disabled in config", async () => {
+    await writeStub(
+      "acli",
+      `echo "should not be called" >&2; exit 99`,
+    );
+    await writeConfig(cacheDir, { providers: { jira: { enabled: false } } });
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-cfg-1",
+      cwd: process.cwd(),
+      user_prompt: "blocked by PROJ-1",
+    });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+  });
+
+  it("still runs other providers when one is disabled", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/issues/3")
+    echo '{"title":"Hi","state":"open","user":{"login":"a"}}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+    await writeStub("acli", `echo "should not be called" >&2; exit 99`);
+    await writeConfig(cacheDir, { providers: { jira: { enabled: false } } });
+
+    const { stdout, code } = await runHook({
+      session_id: "e2e-cfg-2",
+      cwd: process.cwd(),
+      user_prompt: "PROJ-1 and https://github.com/me/proj/issues/3",
+    });
+
+    assert.equal(code, 0);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.systemMessage, /gh me\/proj#3/);
+    assert.doesNotMatch(parsed.systemMessage, /jira/);
   });
 
   it("does not starve fresh refs when seen-cache is full (cap applied after seen filter)", async () => {
