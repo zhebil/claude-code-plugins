@@ -59,9 +59,15 @@ claude plugin disable auto-enrich@zhebil-tools
 
 ## Configuration
 
-Run `/auto-enrich:configure` from inside Claude Code to view or edit the
-config file. The slash command shows the current state and walks you
-through updates.
+Run `/auto-enrich:configure` from inside Claude Code to set up or
+update the plugin. The skill explains what auto-enrich does, verifies
+your CLIs are installed and authenticated, helps you pick the Jira
+backend, writes `config.json`, and smoke-tests the hook end-to-end.
+It can also walk you through writing a custom provider.
+
+The skill is user-invoked only - it won't auto-trigger from generic
+mentions of GitHub / Jira / Sentry. See
+[skills/configure/SKILL.md](skills/configure/SKILL.md).
 
 The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
 `~/.claude/auto-enrich.json` if `CLAUDE_PLUGIN_DATA` is not set):
