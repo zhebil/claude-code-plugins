@@ -17,6 +17,17 @@ async function writeManifest(dir, paths) {
   );
 }
 
+async function writeManifestEntries(dir, entries) {
+  await writeFile(
+    join(dir, "discovery.json"),
+    JSON.stringify(
+      { loadedAt: Date.now(), entries, paths: entries.map((e) => e.path) },
+      null,
+      2,
+    ),
+  );
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOOK_PATH = resolve(HERE, "../../hooks/auto-enrich.mjs");
 
@@ -467,6 +478,85 @@ esac
 
     assert.equal(code, 0);
     assert.equal(stdout, "");
+  });
+
+  it("loads a project-source provider when the cwd is on the trust list", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-trusted-"));
+    const providerPath = join(projectDir, "team.provider.mjs");
+    await writeFile(
+      providerPath,
+      `
+        const PATTERN = /\\b(TEAM-\\d+)\\b/g;
+        export default {
+          apiVersion: 1,
+          name: "team",
+          detect(text) {
+            const out = [];
+            for (const m of text.matchAll(PATTERN)) {
+              out.push({ id: "team:" + m[1], key: m[1] });
+            }
+            return out;
+          },
+          async fetch(match) {
+            return "#### Team " + match.key + ": project-trusted";
+          },
+          summarize(match) { return "team " + match.key; },
+        };
+      `,
+    );
+    await writeManifestEntries(cacheDir, [{ path: providerPath, source: "project" }]);
+    await writeConfig(cacheDir, { trustedProjects: [projectDir] });
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-trusted-1",
+      cwd: projectDir,
+      user_prompt: "fix TEAM-7",
+    });
+
+    await rm(projectDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: team TEAM-7/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Team TEAM-7: project-trusted/);
+  });
+
+  it("ignores a project-source provider when the cwd is NOT trusted", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-untrusted-"));
+    const providerPath = join(projectDir, "team.provider.mjs");
+    await writeFile(
+      providerPath,
+      `
+        const PATTERN = /\\b(TEAM-\\d+)\\b/g;
+        export default {
+          apiVersion: 1,
+          name: "team",
+          detect(text) {
+            const out = [];
+            for (const m of text.matchAll(PATTERN)) {
+              out.push({ id: "team:" + m[1], key: m[1] });
+            }
+            return out;
+          },
+          async fetch() { return "#### should not run"; },
+          summarize() { return "team"; },
+        };
+      `,
+    );
+    await writeManifestEntries(cacheDir, [{ path: providerPath, source: "project" }]);
+    // No trustedProjects in config; cwd is the project dir but not opted in.
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-untrusted-1",
+      cwd: projectDir,
+      user_prompt: "fix TEAM-7",
+    });
+
+    await rm(projectDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
   });
 
   it("does not starve fresh refs when seen-cache is full (cap applied after seen filter)", async () => {

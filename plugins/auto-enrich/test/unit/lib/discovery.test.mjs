@@ -125,7 +125,7 @@ describe("discoverProviders", () => {
       builtinNames: new Set(),
       dir: join(scanDir, "does-not-exist"),
     });
-    assert.deepEqual(result, { paths: [], warnings: [] });
+    assert.deepEqual(result, { entries: [], paths: [], warnings: [] });
   });
 
   it("returns only `*.provider.mjs` files in sorted order", async () => {
@@ -165,27 +165,136 @@ describe("discoverProviders", () => {
     assert.equal(warnings.length, 1);
     assert.match(warnings[0], /collides/);
   });
+
+  it("tags entries with their source (global)", async () => {
+    await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("g"));
+    const { entries } = await discoverProviders({
+      builtinNames: new Set(),
+      dir: scanDir,
+    });
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].source, "global");
+  });
+
+  it("scans project dir when provided, after global", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    try {
+      await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("g"));
+      await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("p"));
+      const { entries, warnings } = await discoverProviders({
+        builtinNames: new Set(),
+        dir: scanDir,
+        projectDir,
+      });
+      assert.equal(warnings.length, 0);
+      assert.equal(entries.length, 2);
+      assert.equal(entries[0].source, "global");
+      assert.match(entries[0].path, /g\.provider\.mjs$/);
+      assert.equal(entries[1].source, "project");
+      assert.match(entries[1].path, /p\.provider\.mjs$/);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("project entry is rejected when name collides with global", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    try {
+      await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("dup"));
+      await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("dup"));
+      const { entries, warnings } = await discoverProviders({
+        builtinNames: new Set(),
+        dir: scanDir,
+        projectDir,
+      });
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].source, "global");
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /collides/);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("project entry is rejected when name collides with built-in", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    try {
+      await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("jira"));
+      const { entries, warnings } = await discoverProviders({
+        builtinNames: new Set(["jira"]),
+        dir: scanDir,
+        projectDir,
+      });
+      assert.equal(entries.length, 0);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /collides/);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("missing project dir is silent (not an error)", async () => {
+    await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("g"));
+    const { entries, warnings } = await discoverProviders({
+      builtinNames: new Set(),
+      dir: scanDir,
+      projectDir: join(scanDir, "does-not-exist"),
+    });
+    assert.equal(warnings.length, 0);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].source, "global");
+  });
 });
 
 describe("writeManifest / readManifest", () => {
-  it("round-trips a path list", async () => {
+  it("round-trips a path list (legacy shape) as global entries", async () => {
     await writeManifest(["/a/x.mjs", "/b/y.mjs"]);
     const manifest = await readManifest();
-    assert.deepEqual(manifest.paths, ["/a/x.mjs", "/b/y.mjs"]);
+    assert.deepEqual(
+      manifest.entries,
+      [
+        { path: "/a/x.mjs", source: "global" },
+        { path: "/b/y.mjs", source: "global" },
+      ],
+    );
     assert.ok(manifest.loadedAt > 0);
     assert.equal(getManifestPath(), join(dataDir, "discovery.json"));
   });
 
+  it("round-trips tagged entries preserving source", async () => {
+    await writeManifest([
+      { path: "/a/x.mjs", source: "global" },
+      { path: "/p/y.mjs", source: "project" },
+    ]);
+    const manifest = await readManifest();
+    assert.deepEqual(
+      manifest.entries,
+      [
+        { path: "/a/x.mjs", source: "global" },
+        { path: "/p/y.mjs", source: "project" },
+      ],
+    );
+  });
+
+  it("reads a legacy manifest with only `paths`", async () => {
+    await writeFile(
+      getManifestPath(),
+      JSON.stringify({ loadedAt: 1, paths: ["/legacy/x.mjs"] }),
+    );
+    const manifest = await readManifest();
+    assert.deepEqual(manifest.entries, [{ path: "/legacy/x.mjs", source: "global" }]);
+  });
+
   it("returns an empty manifest when file is missing", async () => {
     const manifest = await readManifest();
-    assert.deepEqual(manifest, { loadedAt: 0, paths: [] });
+    assert.deepEqual(manifest, { loadedAt: 0, entries: [] });
   });
 
   it("returns an empty manifest on malformed JSON", async () => {
     const path = getManifestPath();
     await writeFile(path, "not json");
     const manifest = await readManifest();
-    assert.deepEqual(manifest, { loadedAt: 0, paths: [] });
+    assert.deepEqual(manifest, { loadedAt: 0, entries: [] });
   });
 });
 
@@ -224,5 +333,31 @@ describe("loadCustomProviders", () => {
     await writeManifest([path]);
     const out = await loadCustomProviders(new Set(["jira"]));
     assert.equal(out.length, 0);
+  });
+
+  it("loads global + project entries in order when allowProject is true", async () => {
+    const gPath = join(scanDir, "g.provider.mjs");
+    const pPath = join(scanDir, "p.provider.mjs");
+    await writeFile(gPath, validProviderSrc("g"));
+    await writeFile(pPath, validProviderSrc("p"));
+    await writeManifest([
+      { path: gPath, source: "global" },
+      { path: pPath, source: "project" },
+    ]);
+    const out = await loadCustomProviders(new Set());
+    assert.deepEqual(out.map((p) => p.name), ["g", "p"]);
+  });
+
+  it("drops project entries when allowProject is false", async () => {
+    const gPath = join(scanDir, "g.provider.mjs");
+    const pPath = join(scanDir, "p.provider.mjs");
+    await writeFile(gPath, validProviderSrc("g"));
+    await writeFile(pPath, validProviderSrc("p"));
+    await writeManifest([
+      { path: gPath, source: "global" },
+      { path: pPath, source: "project" },
+    ]);
+    const out = await loadCustomProviders(new Set(), { allowProject: false });
+    assert.deepEqual(out.map((p) => p.name), ["g"]);
   });
 });

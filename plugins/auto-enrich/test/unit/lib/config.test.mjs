@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   getConfigPath,
   getProviderConfig,
+  getTrustedProjects,
+  isProjectTrusted,
   isProviderEnabled,
   loadConfig,
 } from "../../../hooks/lib/config.mjs";
@@ -87,5 +89,67 @@ describe("getProviderConfig", () => {
 
   it("returns {} for malformed entries", () => {
     assert.deepEqual(getProviderConfig({ providers: { jira: 42 } }, "jira"), {});
+  });
+});
+
+describe("getTrustedProjects", () => {
+  it("returns [] when missing", () => {
+    assert.deepEqual(getTrustedProjects({}), []);
+  });
+
+  it("returns [] when not an array", () => {
+    assert.deepEqual(getTrustedProjects({ trustedProjects: "/tmp/x" }), []);
+  });
+
+  it("returns the list when well-formed", () => {
+    const cfg = { trustedProjects: ["/a", "/b"] };
+    assert.deepEqual(getTrustedProjects(cfg), ["/a", "/b"]);
+  });
+
+  it("drops non-string and empty-string entries silently", () => {
+    const cfg = { trustedProjects: ["/a", "", 42, null, "/b"] };
+    assert.deepEqual(getTrustedProjects(cfg), ["/a", "/b"]);
+  });
+});
+
+describe("isProjectTrusted", () => {
+  it("returns false when list is empty", () => {
+    assert.equal(isProjectTrusted({}, "/tmp/x"), false);
+  });
+
+  it("returns true on exact resolved match", () => {
+    const cfg = { trustedProjects: ["/tmp/x"] };
+    assert.equal(isProjectTrusted(cfg, "/tmp/x"), true);
+  });
+
+  it("normalizes trailing slash via path.resolve", () => {
+    const cfg = { trustedProjects: ["/tmp/x/"] };
+    assert.equal(isProjectTrusted(cfg, "/tmp/x"), true);
+  });
+
+  it("treats `.` as the resolved cwd", () => {
+    const cfg = { trustedProjects: [process.cwd()] };
+    assert.equal(isProjectTrusted(cfg, "."), true);
+  });
+
+  it("does NOT trust subdirectories of a trusted entry", () => {
+    const cfg = { trustedProjects: ["/tmp/parent"] };
+    assert.equal(isProjectTrusted(cfg, "/tmp/parent/sub"), false);
+  });
+
+  it("does NOT trust parent of a trusted entry", () => {
+    const cfg = { trustedProjects: ["/tmp/parent/sub"] };
+    assert.equal(isProjectTrusted(cfg, "/tmp/parent"), false);
+  });
+
+  it("returns false for empty / non-string cwd", () => {
+    const cfg = { trustedProjects: ["/tmp/x"] };
+    assert.equal(isProjectTrusted(cfg, ""), false);
+    assert.equal(isProjectTrusted(cfg, null), false);
+  });
+
+  it("ignores garbage entries when checking", () => {
+    const cfg = { trustedProjects: [42, "", "/tmp/x"] };
+    assert.equal(isProjectTrusted(cfg, "/tmp/x"), true);
   });
 });
