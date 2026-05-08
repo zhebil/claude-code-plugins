@@ -4,6 +4,7 @@ import { safeJsonParse } from "./lib/json.mjs";
 import { findCodeRanges } from "./lib/code-ranges.mjs";
 import { loadSeenIds, saveSeenIds } from "./lib/cache.mjs";
 import { loadConfig, isProviderEnabled, getProviderConfig } from "./lib/config.mjs";
+import { loadCustomProviders } from "./lib/discovery.mjs";
 import { providers } from "./providers/index.mjs";
 
 const MAX_MATCHES_PER_PROMPT = 8;
@@ -171,7 +172,10 @@ async function main() {
   const sessionId = input.session_id || "ephemeral";
   const codeRanges = findCodeRanges(userPrompt);
   const config = await loadConfig();
-  const active = providers.filter((p) => isProviderEnabled(config, p.name));
+  const builtinNames = new Set(providers.map((p) => p.name));
+  const custom = await loadCustomProviders(builtinNames);
+  const allProviders = [...providers, ...custom];
+  const active = allProviders.filter((p) => isProviderEnabled(config, p.name));
   if (!active.length) return;
   const ctx = buildContext(cwd, config);
 

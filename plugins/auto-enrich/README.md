@@ -84,6 +84,45 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
 A missing or invalid file falls back to defaults (every provider on,
 acli for jira).
 
+## Custom providers
+
+Drop `*.provider.mjs` files into `~/.claude/auto-enrich/providers/` and
+restart Claude Code. A `SessionStart` hook validates each file once per
+session and writes a manifest the prompt hook reads. Files that don't
+satisfy the contract are skipped with a stderr warning.
+
+A custom provider is a plain ESM module that default-exports an object:
+
+```js
+// ~/.claude/auto-enrich/providers/linear.provider.mjs
+const PATTERN = /\b(LIN-\d+)\b/g;
+
+export default {
+  apiVersion: 1,
+  name: "linear",                 // must not collide with built-ins
+  // optional: prepare(text, ctx)
+  detect(text, codeRanges, ctx) {
+    const out = [];
+    for (const m of text.matchAll(PATTERN)) {
+      out.push({ id: `linear:${m[1]}`, key: m[1] });
+    }
+    return out;
+  },
+  async fetch(match, ctx) {
+    // use ctx.runner(cmd, args, { cwd: ctx.cwd }), return markdown or null
+    return `#### Linear ${match.key}\n- ...`;
+  },
+  summarize(match) {
+    return `linear ${match.key}`;
+  },
+};
+```
+
+Custom providers run after built-ins. Disable a built-in via `config.json`
+to hand its territory off to a custom provider with a different name.
+The discovery dir is global only - per-repo discovery is intentionally
+not supported, so cloned repositories cannot inject code into the hook.
+
 ## Test the hook directly
 
 ```bash

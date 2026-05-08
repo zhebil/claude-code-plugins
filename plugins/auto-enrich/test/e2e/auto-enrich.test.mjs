@@ -10,6 +10,13 @@ async function writeConfig(dir, payload) {
   await writeFile(join(dir, "config.json"), JSON.stringify(payload));
 }
 
+async function writeManifest(dir, paths) {
+  await writeFile(
+    join(dir, "discovery.json"),
+    JSON.stringify({ loadedAt: Date.now(), paths }, null, 2),
+  );
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOOK_PATH = resolve(HERE, "../../hooks/auto-enrich.mjs");
 
@@ -397,6 +404,69 @@ esac
     const parsed = JSON.parse(stdout);
     assert.match(parsed.systemMessage, /gh me\/proj#3/);
     assert.doesNotMatch(parsed.systemMessage, /jira/);
+  });
+
+  it("loads a custom provider listed in the discovery manifest", async () => {
+    const customDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-custom-"));
+    const providerPath = join(customDir, "linear.provider.mjs");
+    await writeFile(
+      providerPath,
+      `
+        const PATTERN = /\\b(LIN-\\d+)\\b/g;
+        export default {
+          apiVersion: 1,
+          name: "linear",
+          detect(text, codeRanges) {
+            const out = [];
+            for (const m of text.matchAll(PATTERN)) {
+              out.push({ id: "linear:" + m[1], key: m[1] });
+            }
+            return out;
+          },
+          async fetch(match) {
+            return "#### Linear " + match.key + ": Custom provider works";
+          },
+          summarize(match) {
+            return "linear " + match.key;
+          },
+        };
+      `,
+    );
+    await writeManifest(cacheDir, [providerPath]);
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-custom-1",
+      cwd: process.cwd(),
+      user_prompt: "fix LIN-42",
+    });
+
+    await rm(customDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: linear LIN-42/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Linear LIN-42: Custom provider works/);
+  });
+
+  it("ignores a manifest entry that fails the runtime contract check", async () => {
+    const customDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-broken-"));
+    const providerPath = join(customDir, "broken.provider.mjs");
+    await writeFile(
+      providerPath,
+      `export default { apiVersion: 1, name: "broken", detect: () => [] };`,
+    );
+    await writeManifest(cacheDir, [providerPath]);
+
+    const { stdout, code } = await runHook({
+      session_id: "e2e-custom-2",
+      cwd: process.cwd(),
+      user_prompt: "no refs here",
+    });
+
+    await rm(customDir, { recursive: true, force: true });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
   });
 
   it("does not starve fresh refs when seen-cache is full (cap applied after seen filter)", async () => {
