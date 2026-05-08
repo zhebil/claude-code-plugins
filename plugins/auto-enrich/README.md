@@ -59,20 +59,18 @@ claude plugin disable auto-enrich@zhebil-tools
 
 ## Configuration
 
-The plugin ships a guided setup skill. Inside Claude Code, type:
+The plugin ships a setup skill. Inside Claude Code, type:
 
 ```text
 /auto-enrich:configure-auto-enrich
 ```
 
-and press enter. Claude will walk you through:
+and press enter. Claude will:
 
-1. **Pick sources** - which of GitHub, Jira, Sentry you want enriched.
-2. **Verify CLIs** - install + auth checks for `gh`, `acli` / `jira`, `sentry`. Missing or unauthed CLIs get install-and-login instructions.
-3. **Pick the Jira backend** (only if Jira is enabled) - `acli` (default) or `jira-cli`.
-4. **Write `config.json`** - with a diff preview before anything is written.
-5. **Smoke test** - runs the hook end-to-end against a real reference of your choice and confirms the enrichment fires.
-6. **Optional: scaffold a custom provider** - copies an annotated example you can adapt for Linear / Shortcut / internal trackers.
+- Briefly explain what the plugin does and why it needs your CLIs (`gh`, `acli` / `jira`, `sentry`) to be authenticated.
+- Detect what you have installed and authed in one pass.
+- Show your current config (or note that defaults apply) and list what you can change - toggle providers, switch the Jira backend between `acli` and `jira-cli`, scaffold a custom provider, etc.
+- Make only the changes you ask for, with a diff preview before writing.
 
 The skill is **user-invoked only** (`disable-model-invocation: true`) - Claude won't trigger it from generic mentions of GitHub / Jira / Sentry. You always have to type the slash command.
 

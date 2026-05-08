@@ -1,196 +1,129 @@
 ---
 name: configure-auto-enrich
-description: Set up and configure the auto-enrich plugin - verify CLIs, pick the Jira backend, write config.json, smoke test the hook, and (optionally) scaffold a custom provider. Use ONLY when the user explicitly invokes this skill via `/auto-enrich:configure-auto-enrich` or asks to set up / configure / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, Jira, Sentry, or "context enrichment".
+description: Explain the auto-enrich plugin to the user and show them how it's currently configured + what they can change. Use ONLY when the user explicitly invokes `/auto-enrich:configure-auto-enrich` or asks to set up / configure / inspect / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, Jira, Sentry, or "context enrichment".
 user-invocable: true
 disable-model-invocation: true
 ---
 
-# auto-enrich: setup & configuration
+# auto-enrich: explain + configure
 
-Guided walkthrough for setting up auto-enrich. Briefly explains the plugin, verifies CLIs, writes a config file, smoke-tests the hook, and optionally helps the user write a custom provider.
+User-invoked only. Don't run as a side effect of unrelated work. If the user mentions Jira / GitHub / Sentry without asking to configure auto-enrich, ignore this skill.
 
-> User-invoked only. Don't run this skill as a side effect of unrelated work. If the user mentions Jira / GitHub / Sentry without asking to configure auto-enrich, ignore this skill.
+## What this skill does
 
-## What auto-enrich is (60 seconds)
+Explain to the user what auto-enrich is, gather the current state in one pass (parallel CLI + auth + config checks), present a concise summary of "what's on, what's off, what you can change", and then act on whatever the user actually wants. **Don't walk through numbered steps. Don't ask the user permission between every check. Don't re-prompt for things you can detect.**
 
-When the user submits a prompt mentioning a Jira ticket, GitHub PR/issue/repo, or Sentry issue, auto-enrich runs **before Claude reads the prompt** and prepends a compact markdown summary fetched via local CLIs (`gh`, `acli`/`jira`, `sentry`).
+The user already triggered the skill because they want information. Lead with the explanation and the current state, not with questions.
 
-- No AI calls.
-- No stored credentials - it reuses the user's existing CLI auth.
-- Refs inside backticks or fenced code blocks are skipped.
-- Each ref is enriched once per session (dedup cache at `$CLAUDE_PLUGIN_DATA/seen.json`, preserved across `/compact`).
+## The flow
 
-## How it works (high level)
+### 1. Explain the plugin (short)
 
-The plugin registers three hooks in `hooks/hooks.json`:
+Open with a single tight paragraph. Cover:
 
-- **`UserPromptSubmit`** -> `hooks/auto-enrich.mjs`. The main hook. Each provider's `detect()` finds refs; `fetch()` shells out to its CLI; the orchestrator dedupes, drops already-seen ids, caps to a per-prompt max, and emits a JSON envelope on stdout plus an `Auto-enriched: ...` line on stderr.
-- **`SessionStart`** -> `hooks/discover.mjs`. Scans `~/.claude/auto-enrich/providers/` (and any trusted project dirs) for custom `*.provider.mjs` files, validates them, writes `discovery.json`. **Manifest is built once per session** - editing a provider mid-session has no effect until the next new session.
-- **`SessionStart` (matcher: `compact`)** and **`PreCompact`** -> `hooks/compact-cleanup.mjs`. Stash and re-surface seen-ids around `/compact` so dedup state survives compaction without starving fresh refs.
+- **What it does**: when the user submits a prompt mentioning a GitHub PR/issue/repo, Jira ticket, or Sentry issue, the plugin runs *before* Claude reads the prompt and prepends a compact markdown summary of that reference fetched via local CLIs (`gh`, `acli` or `jira`, `sentry`).
+- **Why it needs CLI auth**: the plugin doesn't store credentials. It just runs the CLIs as the user, so the CLIs need to be logged in to GitHub / Atlassian / Sentry on their own. There's nothing to "configure" auth-wise inside the plugin.
+- **Code blocks are skipped**: refs inside backticks or fenced blocks are never enriched.
+- **Each ref is enriched once per session** (dedup state in `$CLAUDE_PLUGIN_DATA/seen.json`, preserved across `/compact`).
 
-Built-in providers: `github-issue`, `github-repo`, `jira`, `sentry`. Each can be disabled, and the Jira provider can run on either `acli` or `jira-cli`.
+Keep this to roughly 4-6 lines. Don't reproduce the README.
 
-## Walkthrough
+### 2. Gather current state in ONE parallel batch
 
-Run these in order. Don't skip ahead - each step depends on the previous one's answers.
+Without asking, run the install + auth + config checks at the same time. Use a single tool message with parallel `Bash` calls. Don't do them sequentially and don't pause to confirm.
 
-### Step 1 - which sources does the user want enriched?
+The checks:
 
-Ask, before doing anything else:
+- `command -v gh && gh auth status 2>&1 | head -8`
+- `command -v acli && acli jira workitem search --jql 'assignee = currentUser()' --limit 1 2>&1 | head -3`
+- `command -v jira && jira me 2>&1 | head -3`
+- `command -v sentry && sentry org list --json 2>&1 | head -3`
+- `cat "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || cat "$HOME/.claude/auto-enrich.json" 2>/dev/null || echo "(no config file - defaults apply)"`
 
-> Which sources do you want auto-enrich to pull context for?
-> 1. **GitHub** (PRs, issues, repos, READMEs)
-> 2. **Jira** tickets
-> 3. **Sentry** issues
->
-> Pick any combination. Also: do you want me to walk you through writing a custom provider afterwards (e.g. for Linear, Shortcut, internal trackers)?
+Treat "command not found" / non-zero exit as "not installed/authed" and move on; do not block on a missing CLI.
 
-Use the answers to drive every subsequent step. Skip checks for sources the user didn't pick.
+If `command -v` returns empty in the Claude Code subshell, also try `zsh -lc 'command -v <bin>'` once for that CLI - PATH in non-interactive shells often misses `~/.local/bin` and friends, and this catches the case where the user has the CLI but the default Bash tool environment doesn't see it.
 
-### Step 2 - verify CLIs are installed and authenticated
+### 3. Present current state as a single summary
 
-For each chosen source, run BOTH the install check and the auth check, and report results back. Don't proceed past a broken CLI - either help fix it or explicitly disable that provider in step 4.
+After the parallel batch returns, render a small table or bulleted summary that the user can read at a glance. Include:
 
-| Source | Install check | Auth check |
-|---|---|---|
-| GitHub | `command -v gh` | `gh auth status` |
-| Jira (acli) | `command -v acli` | `acli jira workitem search --jql 'assignee = currentUser()' --limit 1` |
-| Jira (jira-cli) | `command -v jira` | `jira me` |
-| Sentry | `command -v sentry` | `sentry org list --json` (any non-empty array means authed) |
+- Each built-in provider (`github-issue`, `github-repo`, `jira`, `sentry`) and whether it's currently enabled (default = on, disabled only if `config.json` says so).
+- The CLI each provider needs, and whether that CLI is installed + authed.
+- For Jira specifically, which backend is selected (`acli` default, or `jira-cli`).
+- Where the config file lives, and whether one exists right now.
 
-For Jira, run BOTH install checks - the user might already have one and not know which the plugin supports. Use that to inform step 3.
+Then, in the *same* message, list what the user can change:
 
-If a CLI is missing, point at the install. **Don't run the install yourself** - it's a system-wide change and these usually want sudo or a Homebrew prompt:
+- Toggle any provider on/off.
+- Switch the Jira backend between `acli` and `jira-cli`.
+- Add a custom provider (offer briefly, see step 5).
+- Add a project to `trustedProjects` (only if they ask - it's security-sensitive, see step 6).
 
-- `gh`: `brew install gh` (macOS) or https://cli.github.com/
-- `acli`: https://developer.atlassian.com/cloud/acli/getting-started/
-- `jira-cli`: `brew install ankitpokhrel/jira-cli/jira-cli`
-- `sentry`: install via `brew install getsentry/tools/sentry` or `curl https://cli.sentry.dev/install -fsS | bash`. Docs: https://cli.sentry.dev/. The binary is `sentry` (NOT `sentry-cli`) - confirm with `command -v sentry`. Note: an older legacy Homebrew formula and binary called `sentry-cli` exists for source-map uploads / release tooling; that is a different tool and the plugin does not use it.
+End with a single open question like: **"Anything you want to change, or are the defaults fine?"** - one question, not a step-by-step interview.
 
-If auth is missing, suggest the right command and let the user run it themselves (these are interactive):
+### 4. Act on what the user asks for
 
-- `gh auth login`
-- `acli jira auth login`
-- `jira init`
-- `sentry auth login`
+Only edit the config file when the user names a specific change. Rules:
 
-After the user reports auth succeeded, re-run the auth check to confirm.
+- Resolve the path from `$CLAUDE_PLUGIN_DATA/config.json`, falling back to `~/.claude/auto-enrich.json` only if the env var is unset. Inside Claude Code the env var is set, so prefer that path. (Note: the per-plugin data dir is typically `~/.claude/plugins/data/auto-enrich-<source>/` - resolve it via the env var rather than hardcoding.)
+- Show the diff (current file vs proposed file) before writing.
+- Use `mkdir -p` for the parent dir if missing.
+- Only write `{ "enabled": false }` for providers the user explicitly turned off. Leave defaults implicit - don't write `"enabled": true` everywhere.
+- **If the user wants pure defaults back, delete the config file** rather than writing one full of `true`s. Less is more.
+- After writing or deleting, `cat` the file (or note its absence) so the user can verify.
 
-### Step 3 - choose the Jira CLI (only if Jira is enabled)
-
-Ask:
-
-> Auto-enrich's `jira` provider supports two CLIs:
->
-> - **`acli`** (default) - Atlassian's official CLI. Heavier, but actively maintained and authenticates against Atlassian Cloud out of the box.
-> - **`jira-cli`** (ankitpokhrel/jira-cli, binary name `jira`) - lighter, third-party, popular among power users.
->
-> Which do you want? If you're unsure, or already authed to one of them, pick the one that's working - the markdown output is identical either way.
-
-Default to `acli` if no preference. Record the choice for step 4.
-
-### Step 4 - write `config.json`
-
-Resolve the path:
-
-```bash
-echo "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json"
-```
-
-- Inside Claude Code, `CLAUDE_PLUGIN_DATA` is set per-plugin and that's the canonical location.
-- Outside Claude Code (or when the env var isn't set), the fallback is `~/.claude/auto-enrich.json`.
-- If you're running this skill from a Claude Code session, prefer the env-var path - it's what the running hook reads.
-
-If the file already exists, **show the user its current state first** so they have a baseline before deciding what to change.
-
-Schema:
+The config schema, for reference:
 
 ```jsonc
 {
   "providers": {
     "github-issue": { "enabled": true },
     "github-repo":  { "enabled": true },
-    "jira":         { "enabled": true, "cli": "acli" },
+    "jira":         { "enabled": true, "cli": "acli" }, // "acli" | "jira-cli"
     "sentry":       { "enabled": true }
   },
   "trustedProjects": []
 }
 ```
 
-Key reference:
+Defaults when keys are missing: every provider on, `jira.cli` = `"acli"`, no trusted projects.
 
-| Key | Type | Default | Effect |
-|---|---|---|---|
-| `providers.<name>.enabled` | boolean | `true` | When `false`, that provider's `prepare`/`detect`/`fetch` are not run. Built-in names: `github-issue`, `github-repo`, `jira`, `sentry`. |
-| `providers.jira.cli` | `"acli" \| "jira-cli"` | `"acli"` | Backend CLI for Jira. Unknown values fall back to `acli`. |
-| `trustedProjects` | `string[]` | `[]` | Absolute project-root paths whose `<cwd>/.claude/auto-enrich/providers/*.provider.mjs` files are loaded. **Security-sensitive** - see step 6. |
+**A scope limitation worth knowing**: there are no per-project provider toggles. `enabled` and `cli` are global. If a user asks to "disable Jira just in this repo", be honest that the config doesn't support it and offer the workaround (disable globally, or simply don't paste Jira keys here).
 
-A missing or invalid file means defaults (every provider on, `acli` for jira, no trusted projects). If the user wants pure defaults, **offer to delete the config file** rather than write one - less is more.
+### 5. Custom providers (only if the user asks)
 
-For everything else: build the JSON from the user's choices, **show the diff** (current vs proposed), and only write after explicit confirmation. After writing, `cat` the file back so the user can verify. Use `mkdir -p` for the parent dir if it's missing.
+If the user says they want to add support for something not built-in (Linear, Shortcut, Asana, an internal tracker, etc.):
 
-Only write `{ "enabled": false }` for providers the user explicitly wants OFF. Providers they want ON can be left out of the file entirely.
-
-### Step 5 - smoke test the hook
-
-Pick a real reference the user is OK fetching (a PR they own, a Jira ticket they have access to, etc.). Then run the hook directly with a temp data dir so the seen-cache is bypassed:
-
-```bash
-printf '%s' '{"session_id":"smoke","hook_event_name":"UserPromptSubmit","cwd":"'$PWD'","user_prompt":"<USER REF HERE>"}' \
-  | CLAUDE_PLUGIN_DATA="$(mktemp -d)" node "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/cache/zhebil-tools/plugins/auto-enrich}/hooks/auto-enrich.mjs"
-```
-
-`CLAUDE_PLUGIN_ROOT` is set inside Claude Code; outside, point it at the marketplace install. The `mktemp -d` for `CLAUDE_PLUGIN_DATA` means the same ref will enrich on every re-run - in normal use the cache prevents that within a session.
-
-Look for two signals:
-
-1. **stderr** has a single line like `Auto-enriched: github PR anthropics/claude-code#123`.
-2. **stdout** is JSON whose `hookSpecificOutput.additionalContext` is a non-empty markdown block (wrapped in `<external_content source="...">` tags).
-
-If both are there, it works. If something's off:
-
-- Re-run the auth check from step 2 - tokens expire.
-- `cat "$CLAUDE_PLUGIN_DATA/config.json"` - is the provider disabled?
-- Was the ref inside backticks? Strip them.
-- For Jira, does `config.json`'s `cli` value match an installed and authed CLI?
-- Check stderr for lines starting `auto-enrich:` - those are validation/runtime warnings.
-
-### Step 6 - (optional) custom providers
-
-If the user said yes to step 1's custom-provider question:
-
-1. Read `custom-provider-example.mjs` next to this SKILL.md and walk them through it. The file is a runnable, well-commented Linear-issue provider that demonstrates every part of the contract (`apiVersion`, `name`, `prepare`, `detect`, `fetch`, `summarize`, config reading, error handling, code-range filtering).
+1. Point them at `custom-provider-example.mjs` next to this SKILL.md - a runnable, well-commented Linear-issue example covering every contract field (`apiVersion`, `name`, `prepare`, `detect`, `fetch`, `summarize`, config reading, code-range filtering, error handling).
 2. Have them copy it to `~/.claude/auto-enrich/providers/<name>.provider.mjs`. The `.provider.mjs` suffix is required - other files in that directory are ignored silently.
-3. Tell them to **start a new Claude Code session** for it to take effect. "New session" means `/exit` then `claude` again, or quitting the terminal window. **`/reload-plugins` does NOT re-run `SessionStart`**, so it won't pick up new or edited provider files.
-4. After restart, `cat $CLAUDE_PLUGIN_DATA/discovery.json` to confirm the new provider was validated and listed (with `source: "global"`). Then re-run the smoke command from step 5 with a ref the new provider should match.
+3. Explain that they need to **start a new Claude Code session** for the new provider to take effect (`/exit` then `claude` again). `/reload-plugins` does NOT re-run `SessionStart`, so it won't pick up new or edited provider files.
+4. After restart, `cat $CLAUDE_PLUGIN_DATA/discovery.json` to confirm validation passed and the provider is listed.
+5. **Suggest contributing back**: if the provider they're writing would be useful to others (a popular tracker like Linear, Shortcut, Asana, GitLab, Bitbucket, etc.), encourage them to open a PR to <https://github.com/zhebil/claude-code-plugins> adding it as a built-in. Local custom providers are great for internal-only systems; public-product providers are exactly what should ship in the plugin itself. Note that contributors should follow the contract in `docs/custom-providers.md` and add unit + e2e tests under `plugins/auto-enrich/test/` per the patterns there.
 
-For the full contract (validation rules, lifecycle, EnrichmentContext fields, replacing a built-in), point at `plugins/auto-enrich/docs/custom-providers.md`. The example file in this skill is a starter; the docs are the spec.
+For the full contract spec (validation rules, lifecycle, EnrichmentContext fields, replacing a built-in), point at `plugins/auto-enrich/docs/custom-providers.md`.
 
-#### Project-level providers (advanced, security-sensitive)
+### 6. Project-level providers (only if the user asks, and only with a warning)
 
-If the user has a project that needs its own providers (e.g. an internal tracker only this codebase uses), explain the trust model **before** they opt in:
+This is security-sensitive. Don't bring it up unprompted. If the user asks about it:
 
 > Adding a path to `trustedProjects` grants that repository execute-on-session-start privileges. Every `*.provider.mjs` checked into `<repo>/.claude/auto-enrich/providers/` - including any added by future commits or merged PRs - will be `import()`-ed in the hook's Node process, with access to your working tree, env, and any tokens `gh` / `acli` / `sentry` can reach. **Trust only repos whose contributor list is fully under your control.**
 
-If the user still wants it, add to the **global** config (`$CLAUDE_PLUGIN_DATA/config.json` or `~/.claude/auto-enrich.json`):
+If they still want it, add the absolute project path to `trustedProjects` in the **global** config. Match is exact - no glob, no prefix walk. An in-repo `config.json` cannot grant itself trust. Resolution order: built-ins > global custom > project custom; name collisions are rejected with a stderr warning.
 
-```jsonc
-{
-  "trustedProjects": ["/Users/<me>/work/<repo>"]
-}
-```
+## Anti-patterns to avoid
 
-Things to flag:
+These are the failure modes that came up in the previous version of this skill - don't repeat them:
 
-- **Match is exact** against the resolved cwd - no glob, no prefix walk. Trusting `/path/to/repo` does NOT trust `/path/to/repo/sub`. List subdirs explicitly if needed.
-- **Trust is read only from the global config.** An in-repo `config.json` cannot grant itself trust.
-- **Resolution order**: built-ins win over global custom; global custom wins over project custom. A project provider whose `name` collides with anything earlier is rejected with a stderr warning.
-- The orchestrator re-checks the trust list at every prompt, so revoking trust takes effect on the next prompt without needing a fresh session.
-
-Project providers go in `<projectRoot>/.claude/auto-enrich/providers/*.provider.mjs`. Same contract, same `.provider.mjs` suffix.
+- **Don't lead with "which sources do you want?"** The user just invoked a config skill; they expect an explanation and the current state, not an intake form. Front-load the explain + detect, ask questions only when something genuinely needs the user's input.
+- **Don't run install/auth checks one at a time with confirmation in between.** They're independent and read-only - run them all in a single parallel batch.
+- **Don't propose a smoke test as a default step.** The user can ask for one if they want it. Most of the time the parallel state-gathering already reveals whether things work.
+- **Don't ask "do you also want a custom-provider walkthrough?" preemptively.** Mention custom providers as one of the available knobs in the summary, then drop it. Only walk through if asked.
+- **Don't write `{"enabled": true}` for providers that are already on by default.** Empty config = defaults. Smaller diffs = clearer intent.
+- **Don't re-ask things you already detected.** If `command -v acli` returned a path, don't ask "do you have acli installed?" - just report it as installed.
 
 ## Notes for future invocations
 
-- This skill is idempotent - the user can re-run it any time to change settings. No harm in re-running just step 4.
-- Don't edit `settings.json`, `hooks.json`, or any plugin source code from this skill. Scope is: install/auth checks, `auto-enrich`'s own config file, and (optionally) dropping a provider file under `~/.claude/auto-enrich/providers/` or a trusted project's `.claude/auto-enrich/providers/`.
-- For ad-hoc debugging: `cat $CLAUDE_PLUGIN_DATA/discovery.json` (which custom providers loaded), `cat $CLAUDE_PLUGIN_DATA/seen.json` (per-session dedup cache + post-compact stash), and stderr `auto-enrich:` lines (validation/runtime warnings).
+- This skill is idempotent. The user can re-run it any time to inspect or change settings; nothing here is destructive without explicit confirmation.
+- Don't edit `settings.json`, `hooks.json`, or any plugin source code from this skill. Scope is: explanation, install/auth checks, the `auto-enrich` config file, and (optionally) helping drop a provider file.
+- Debugging hooks the user might want: `cat $CLAUDE_PLUGIN_DATA/discovery.json` (which custom providers loaded), `cat $CLAUDE_PLUGIN_DATA/seen.json` (per-session dedup cache + post-compact stash), and stderr `auto-enrich:` lines (validation/runtime warnings).
