@@ -779,4 +779,176 @@ esac
     const secondParsed = JSON.parse(second.stdout);
     assert.equal((secondParsed.systemMessage.match(/me\/proj#/g) || []).length, 2);
   });
+
+  it("enriches a GitLab issue URL via stubbed glab", async () => {
+    await writeStub(
+      "glab",
+      `
+case "$*" in
+  "api projects/group%2Fproj/issues/3")
+    cat <<'JSON'
+{"title":"Bug","state":"opened","web_url":"https://gitlab.com/group/proj/-/issues/3","author":{"username":"alice"},"description":"issue body","labels":["bug"]}
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-gitlab-1",
+      cwd: process.cwd(),
+      user_prompt: "look at https://gitlab.com/group/proj/-/issues/3",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: glab group\/proj#3/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Issue group\/proj#3: Bug/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Author: alice/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Labels: bug/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /issue body/);
+  });
+
+  it("enriches a GitLab merge request URL via stubbed glab", async () => {
+    await writeStub(
+      "glab",
+      `
+case "$*" in
+  "api projects/group%2Fproj/merge_requests/9")
+    cat <<'JSON'
+{"title":"Add feature","state":"opened","web_url":"https://gitlab.com/group/proj/-/merge_requests/9","author":{"username":"alice"},"source_branch":"feat/x","target_branch":"main","draft":false,"merge_status":"can_be_merged","detailed_merge_status":"mergeable","description":"MR body"}
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-gitlab-2",
+      cwd: process.cwd(),
+      user_prompt: "review https://gitlab.com/group/proj/-/merge_requests/9",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: glab group\/proj!9/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /MR group\/proj!9: Add feature/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Branch: feat\/x -> main/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Detailed status: mergeable/);
+  });
+
+  it("enriches a GitLab project URL with metadata + README via stubbed glab", async () => {
+    await writeStub(
+      "glab",
+      `
+case "$*" in
+  "api projects/me%2Fproj")
+    cat <<'JSON'
+{"description":"demo","web_url":"https://gitlab.com/me/proj","default_branch":"main","visibility":"public","star_count":3,"readme_url":"https://gitlab.com/me/proj/-/blob/main/README.md"}
+JSON
+    ;;
+  "api projects/me%2Fproj/repository/files/README.md/raw?ref=main")
+    echo "# Hello"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-gitlab-3",
+      cwd: process.cwd(),
+      user_prompt: "see https://gitlab.com/me/proj",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: glab-repo me\/proj/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Project me\/proj: demo/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Default branch: main/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /- Visibility: public/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /# Hello/);
+  });
+
+  it("enriches a GitLab file URL with a line anchor via stubbed glab", async () => {
+    await writeStub(
+      "glab",
+      `
+case "$*" in
+  "api projects/me%2Fproj/repository/files/src%2Fx.py/raw?ref=main")
+    cat <<'PY'
+def hello():
+    return "world"
+
+def goodbye():
+    return "bye"
+PY
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-gitlab-4",
+      cwd: process.cwd(),
+      user_prompt: "look at https://gitlab.com/me/proj/-/blob/main/src/x.py#L1-2",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: glab-file me\/proj:src\/x\.py#L1-L2/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /File me\/proj@main - src\/x\.py - lines 1-2/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /1: def hello\(\):/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /2:     return "world"/);
+    assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /3: /);
+  });
+
+  it("does NOT match a GitLab sub-resource URL as a project (no project block)", async () => {
+    // Issue stub succeeds so we get enrichment; the project endpoint must
+    // never be called - asserting on stdout/stderr alone is tautological
+    // because a silent failure looks the same as a correct skip.
+    await writeStub(
+      "glab",
+      `
+case "$*" in
+  "api projects/me%2Fproj/issues/3")
+    cat <<'JSON'
+{"title":"Hi","state":"opened","web_url":"https://gitlab.com/me/proj/-/issues/3","author":{"username":"a"}}
+JSON
+    ;;
+  "api projects/me%2Fproj")
+    echo "should not be called for a sub-resource URL" >&2
+    exit 99
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, code } = await runHook({
+      session_id: "e2e-gitlab-5",
+      cwd: process.cwd(),
+      user_prompt: "see https://gitlab.com/me/proj/-/issues/3",
+    });
+
+    assert.equal(code, 0);
+    const parsed = JSON.parse(stdout);
+    // Issue enrichment is present; project enrichment is NOT.
+    assert.match(parsed.systemMessage, /glab me\/proj#3/);
+    assert.doesNotMatch(parsed.systemMessage, /glab-repo/);
+    assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /Project me\/proj/);
+  });
 });
