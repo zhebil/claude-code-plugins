@@ -1,5 +1,6 @@
 import { safeJsonParse } from "../lib/json.mjs";
 import { isInsideCode } from "../lib/code-ranges.mjs";
+import { renderEntity } from "../lib/render-entity.mjs";
 
 const URL_PATTERN =
   /https?:\/\/gitlab\.com\/((?:[\w.-]+\/)+[\w.-]+?)\/-\/(issues|merge_requests)\/(\d+)/g;
@@ -72,10 +73,6 @@ export const gitlabIssueProvider = {
     return formatIssueOrMr({ fullPath, iid, isMr, data });
   },
 
-  /**
-   * @param {GitlabIssueMatch} match
-   * @returns {string}
-   */
   summarize(match) {
     const sigil = match.isMr ? "!" : "#";
     return `glab ${match.fullPath}${sigil}${match.iid}`;
@@ -83,45 +80,50 @@ export const gitlabIssueProvider = {
 };
 
 /**
- * Render the markdown block. Pure function.
- *
  * @param {Object} args
  * @param {string} args.fullPath
  * @param {string} args.iid
  * @param {boolean} args.isMr
- * @param {Object} args.data Raw `glab api projects/.../issues|merge_requests/N` response.
+ * @param {Object} args.data
  * @returns {string}
  */
 function formatIssueOrMr({ fullPath, iid, isMr, data }) {
-  const lines = [];
   const kind = isMr ? "MR" : "Issue";
   const sigil = isMr ? "!" : "#";
-  lines.push(`#### ${kind} ${fullPath}${sigil}${iid}: ${data.title ?? ""}`);
-  if (data.web_url) lines.push(`- URL: ${data.web_url}`);
-  if (data.state) lines.push(`- State: ${data.state}`);
   const author = data.author?.username || data.author?.name;
-  if (author) lines.push(`- Author: ${author}`);
-  if (Array.isArray(data.labels) && data.labels.length) {
-    lines.push(`- Labels: ${data.labels.join(", ")}`);
-  }
+
+  const bullets = [
+    ["URL", data.web_url],
+    ["State", data.state],
+    author ? ["Author", author] : null,
+    Array.isArray(data.labels) && data.labels.length
+      ? ["Labels", data.labels.join(", ")]
+      : null,
+  ];
+
   if (isMr) {
     if (data.source_branch && data.target_branch) {
-      lines.push(`- Branch: ${data.source_branch} -> ${data.target_branch}`);
+      bullets.push(["Branch", `${data.source_branch} -> ${data.target_branch}`]);
     }
-    if (data.draft || data.work_in_progress) lines.push("- Draft: yes");
-    if (data.merge_status) lines.push(`- Merge status: ${data.merge_status}`);
+    if (data.draft || data.work_in_progress) bullets.push(["Draft", "yes"]);
+    if (data.merge_status) bullets.push(["Merge status", data.merge_status]);
     if (data.detailed_merge_status && data.detailed_merge_status !== data.merge_status) {
-      lines.push(`- Detailed status: ${data.detailed_merge_status}`);
+      bullets.push(["Detailed status", data.detailed_merge_status]);
     }
   }
-  const description = String(data.description ?? "").trim();
-  if (description) {
-    lines.push("", "**Description:**", description);
-  }
-  lines.push("");
+
+  const body = String(data.description ?? "").trim()
+    ? { title: "Description", text: data.description }
+    : null;
+
   const refetchCmd = isMr
     ? `glab mr view ${iid} -R ${fullPath} --comments`
     : `glab issue view ${iid} -R ${fullPath} --comments`;
-  lines.push(`Refetch with comments: \`${refetchCmd}\``);
-  return lines.join("\n");
+
+  return renderEntity({
+    heading: `${kind} ${fullPath}${sigil}${iid}: ${data.title ?? ""}`,
+    bullets,
+    body,
+    refetch: `Refetch with comments: \`${refetchCmd}\``,
+  });
 }

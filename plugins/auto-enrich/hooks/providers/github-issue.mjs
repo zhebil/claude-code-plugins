@@ -1,5 +1,6 @@
 import { safeJsonParse } from "../lib/json.mjs";
 import { isInsideCode } from "../lib/code-ranges.mjs";
+import { renderEntity } from "../lib/render-entity.mjs";
 
 const FULL_URL_PATTERN = /https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/(?:pull|issues)\/(\d+)/g;
 const SHORT_REF_PATTERN = /(?<![\w/-])([\w.-]+)\/([\w.-]+)#(\d+)\b/g;
@@ -56,9 +57,6 @@ export const githubIssueProvider = {
   },
 
   /**
-   * Find every issue/PR reference in `text`, deduplicated by id and
-   * excluding matches inside code spans.
-   *
    * @param {string} text User prompt.
    * @param {[number, number][]} codeRanges Output of `findCodeRanges(text)`.
    * @param {import("./index.mjs").EnrichmentContext} ctx
@@ -100,7 +98,7 @@ export const githubIssueProvider = {
    *
    * @param {GithubIssueMatch} match
    * @param {import("./index.mjs").EnrichmentContext} ctx
-   * @returns {Promise<string|null>} Markdown block or `null` on failure.
+   * @returns {Promise<string|null>}
    */
   async fetch(match, ctx) {
     const { owner, repo, number } = match;
@@ -131,65 +129,62 @@ export const githubIssueProvider = {
     return formatIssueOrPr({ owner, repo, number, isPullRequest, data, prDetails });
   },
 
-  /**
-   * @param {GithubIssueMatch} match
-   * @returns {string}
-   */
   summarize(match) {
     return `gh ${match.owner}/${match.repo}#${match.number}`;
   },
 };
 
 /**
- * Render the markdown block. Pure function.
- *
  * @param {Object} args
  * @param {string} args.owner
  * @param {string} args.repo
  * @param {string} args.number
  * @param {boolean} args.isPullRequest
- * @param {Object} args.data Raw `gh api .../issues/N` response.
- * @param {Object|null} args.prDetails Optional `gh pr view --json` response.
- * @returns {string} Markdown block.
+ * @param {Object} args.data
+ * @param {Object|null} args.prDetails
+ * @returns {string}
  */
 function formatIssueOrPr({ owner, repo, number, isPullRequest, data, prDetails }) {
-  const lines = [];
   const kind = isPullRequest ? "PR" : "Issue";
-  lines.push(`#### ${kind} ${owner}/${repo}#${number}: ${data.title ?? ""}`);
-  if (data.html_url) lines.push(`- URL: ${data.html_url}`);
   const stateExtra = data.state === "closed" && data.state_reason ? ` (${data.state_reason})` : "";
-  lines.push(`- State: ${data.state}${stateExtra}`);
-  lines.push(`- Author: ${data.user?.login ?? "?"}`);
-  if (data.labels?.length) {
-    lines.push(`- Labels: ${data.labels.map((label) => label.name).join(", ")}`);
-  }
+
+  const bullets = [
+    ["URL", data.html_url],
+    ["State", `${data.state}${stateExtra}`],
+    ["Author", data.user?.login ?? "?"],
+    data.labels?.length
+      ? ["Labels", data.labels.map((label) => label.name).join(", ")]
+      : null,
+  ];
 
   if (isPullRequest && prDetails) {
     if (prDetails.headRefName && prDetails.baseRefName) {
-      lines.push(`- Branch: ${prDetails.headRefName} -> ${prDetails.baseRefName}`);
+      bullets.push(["Branch", `${prDetails.headRefName} -> ${prDetails.baseRefName}`]);
     }
-    if (prDetails.isDraft) lines.push("- Draft: yes");
-    if (prDetails.reviewDecision) lines.push(`- Review: ${prDetails.reviewDecision}`);
-    if (prDetails.mergeable) lines.push(`- Mergeable: ${prDetails.mergeable}`);
+    if (prDetails.isDraft) bullets.push(["Draft", "yes"]);
+    if (prDetails.reviewDecision) bullets.push(["Review", prDetails.reviewDecision]);
+    if (prDetails.mergeable) bullets.push(["Mergeable", prDetails.mergeable]);
     const checks = prDetails.statusCheckRollup;
     if (Array.isArray(checks) && checks.length) {
       const failing = checks.filter((check) => {
         const state = String(check.conclusion ?? check.state ?? "").toUpperCase();
         return state && !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(state);
       }).length;
-      lines.push(`- Checks: ${checks.length} total, ${failing} failing/pending`);
+      bullets.push(["Checks", `${checks.length} total, ${failing} failing/pending`]);
     }
   }
 
-  const body = (isPullRequest && prDetails ? prDetails.body : data.body) ?? "";
-  if (String(body).trim()) {
-    lines.push("", "**Body:**", String(body).trim());
-  }
+  const bodyText = (isPullRequest && prDetails ? prDetails.body : data.body) ?? "";
+  const body = String(bodyText).trim() ? { title: "Body", text: bodyText } : null;
 
-  lines.push("");
   const refetchCmd = isPullRequest
     ? `gh pr view ${number} --repo ${owner}/${repo} --comments`
     : `gh issue view ${number} --repo ${owner}/${repo} --comments`;
-  lines.push(`Refetch with comments: \`${refetchCmd}\``);
-  return lines.join("\n");
+
+  return renderEntity({
+    heading: `${kind} ${owner}/${repo}#${number}: ${data.title ?? ""}`,
+    bullets,
+    body,
+    refetch: `Refetch with comments: \`${refetchCmd}\``,
+  });
 }
