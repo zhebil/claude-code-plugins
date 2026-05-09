@@ -1,54 +1,19 @@
 import { isInsideCode } from "../lib/code-ranges.mjs";
-
-const MAX_FILE_CHARS = 12000;
-
-/**
- * Extensions whose contents are not useful as text. Detection drops these
- * before fetching, so we don't waste an API round-trip or pollute the
- * prompt with raw bytes. `.svg` is intentionally treated as text.
- */
-const BINARY_EXTENSIONS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".tiff", ".heic",
-  ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar",
-  ".exe", ".dll", ".so", ".dylib", ".o", ".a", ".class", ".wasm", ".jar", ".pyc",
-  ".woff", ".woff2", ".ttf", ".otf", ".eot",
-  ".mp3", ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flac", ".ogg", ".wav",
-  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-  ".db", ".sqlite", ".sqlite3",
-  ".bin", ".iso", ".dat",
-]);
-
-/** Extension -> markdown fence info-string. Unknown extensions emit a fence with no language tag. */
-const EXTENSION_LANGUAGE = {
-  ".py": "python",
-  ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
-  ".ts": "typescript", ".tsx": "tsx", ".jsx": "jsx",
-  ".go": "go", ".rs": "rust", ".java": "java", ".kt": "kotlin", ".swift": "swift",
-  ".rb": "ruby", ".php": "php",
-  ".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".hpp": "cpp",
-  ".cs": "csharp",
-  ".sh": "bash", ".zsh": "bash", ".bash": "bash",
-  ".yaml": "yaml", ".yml": "yaml",
-  ".json": "json", ".toml": "toml", ".xml": "xml",
-  ".html": "html", ".css": "css", ".scss": "scss", ".less": "less",
-  ".md": "markdown", ".markdown": "markdown",
-  ".sql": "sql",
-  ".tf": "hcl", ".hcl": "hcl",
-  ".proto": "protobuf",
-  ".svg": "xml",
-  ".lua": "lua",
-  ".scala": "scala",
-  ".r": "r",
-  ".pl": "perl",
-  ".dart": "dart",
-  ".ex": "elixir", ".exs": "elixir",
-};
+import {
+  BINARY_EXTENSIONS,
+  buildFileBody,
+  encodeUrlPath,
+  fileExtension,
+  outOfRangeNote,
+  parseFileTail,
+  truncationSuffix,
+} from "../lib/file-text.mjs";
 
 /**
  * github.com host: matches both /blob/<ref>/<path> and /raw/<ref>/<path>.
  * The path capture is intentionally permissive (anything that isn't
  * whitespace or a markdown delimiter); trailing punctuation is stripped
- * post-hoc by {@link parseTail}.
+ * post-hoc inside parseFileTail().
  */
 const BLOB_URL_PATTERN =
   /https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/(?:blob|raw)\/([^/?#\s]+)\/([^\s)\]>"']+)/g;
@@ -66,15 +31,9 @@ const RAW_HOST_PATTERN =
  */
 const REFS_PREFIX_PATTERN = /^(heads|tags)\/([^/]+)\/(.*)$/;
 
-const TRAILING_PUNCT = /[.,!?;:)\]>"']+$/;
-
 /**
- * @typedef {Object} LineAnchor
- * @property {number} start 1-indexed inclusive.
- * @property {number} end   1-indexed inclusive (== start for single-line anchor).
- */
-
-/**
+ * @typedef {import("../lib/file-text.mjs").LineAnchor} LineAnchor
+ *
  * @typedef {Object} GithubFileMatch
  * @property {string} id Stable id like `github-file:owner/repo@ref/path[#L10-L20]`.
  * @property {string} owner
@@ -115,7 +74,7 @@ export const githubFileProvider = {
     const push = (owner, repo, rawRef, rawTail, position) => {
       if (isInsideCode(position, codeRanges)) return;
       const { ref, tail } = expandRefsPrefix(rawRef, rawTail);
-      const parsed = parseTail(tail);
+      const parsed = parseFileTail(tail);
       if (!parsed) return;
       if (BINARY_EXTENSIONS.has(fileExtension(parsed.path))) return;
       const anchorPart = parsed.anchor
@@ -191,185 +150,39 @@ function expandRefsPrefix(ref, rawTail) {
 }
 
 /**
- * Parse the captured path-and-tail (everything after `<ref>/`). Strips
- * trailing sentence punctuation, drops the query string, and parses the
- * URL fragment as a possible line anchor.
- *
- * @param {string} rawTail
- * @returns {{path: string, anchor: LineAnchor|null} | null}
- */
-function parseTail(rawTail) {
-  const cleaned = rawTail.replace(TRAILING_PUNCT, "");
-  if (!cleaned) return null;
-  let withoutAnchor = cleaned;
-  let anchorStr = null;
-  const hashIdx = withoutAnchor.indexOf("#");
-  if (hashIdx >= 0) {
-    anchorStr = withoutAnchor.slice(hashIdx + 1);
-    withoutAnchor = withoutAnchor.slice(0, hashIdx);
-  }
-  const queryIdx = withoutAnchor.indexOf("?");
-  const path = queryIdx >= 0 ? withoutAnchor.slice(0, queryIdx) : withoutAnchor;
-  if (!path) return null;
-  return { path, anchor: parseAnchor(anchorStr) };
-}
-
-/**
- * Parse `L10` or `L10-L20` (case-sensitive, GitHub's actual format) into
- * a normalized {start, end}. Returns `null` for any other shape.
- *
- * @param {string|null} s
- * @returns {LineAnchor|null}
- */
-function parseAnchor(s) {
-  if (!s) return null;
-  const m = /^L(\d+)(?:-L(\d+))?$/.exec(s);
-  if (!m) return null;
-  let start = parseInt(m[1], 10);
-  let end = m[2] != null ? parseInt(m[2], 10) : start;
-  // Normalize inverted ranges before the lower-bound check, so that
-  // `#L10-L0` (would-be-invalid end) doesn't slip through after the swap.
-  if (start > end) [start, end] = [end, start];
-  if (start < 1) return null;
-  return { start, end };
-}
-
-/**
- * @param {string} path
- * @returns {string} The lowercased extension including the leading dot, or
- *   "" for dotfiles / extensionless names.
- */
-function fileExtension(path) {
-  const slash = path.lastIndexOf("/");
-  const name = slash >= 0 ? path.slice(slash + 1) : path;
-  const dot = name.lastIndexOf(".");
-  if (dot <= 0) return "";
-  return name.slice(dot).toLowerCase();
-}
-
-/**
- * Encode a path-like value (slashes preserved) for safe interpolation
- * into a URL. Each `/`-separated segment is independently
- * encodeURIComponent'd, which neutralizes stray `&`, `?`, `#`, or
- * unicode oddities without mangling the segment boundaries the GitHub
- * Contents API expects.
- *
- * @param {string} value
- * @returns {string}
- */
-function encodeUrlPath(value) {
-  return value.split("/").map(encodeURIComponent).join("/");
-}
-
-/**
- * Pick a fence length that won't collide with any backtick run inside `body`.
- * Markdown allows arbitrary-length fences as long as the closing fence is
- * at least as long as the opener.
- *
- * @param {string} body
- * @returns {string}
- */
-function fenceFor(body) {
-  let max = 2;
-  let run = 0;
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] === "`") {
-      run++;
-      if (run > max) max = run;
-    } else {
-      run = 0;
-    }
-  }
-  return "`".repeat(max + 1);
-}
-
-/**
- * Render the markdown block. Pure function.
- *
  * @param {Object} args
  * @param {string} args.owner
  * @param {string} args.repo
  * @param {string} args.ref
  * @param {string} args.path
  * @param {LineAnchor|null} args.anchor
- * @param {string} args.content Raw file content from the Contents API.
+ * @param {string} args.content
  * @returns {string}
  */
 function formatFile({ owner, repo, ref, path, anchor, content }) {
-  // A single trailing newline on a file produces a phantom empty line
-  // when split on "\n"; strip exactly one so totalLines matches the
-  // common-sense count and an out-of-range guard works correctly.
-  const normalized = content.endsWith("\n") ? content.slice(0, -1) : content;
-  const allLines = normalized.split("\n");
-  const totalLines = allLines.length;
+  const body = buildFileBody({ content, anchor, langExt: fileExtension(path) });
 
-  let outOfRange = false;
-  let useAnchor = anchor;
-  if (useAnchor && useAnchor.start > totalLines) {
-    outOfRange = true;
-    useAnchor = null;
-  }
-  if (useAnchor) {
-    useAnchor = {
-      start: useAnchor.start,
-      end: Math.min(useAnchor.end, totalLines),
-    };
-  }
-
-  const sliceLines = useAnchor
-    ? allLines.slice(useAnchor.start - 1, useAnchor.end)
-    : allLines;
-
-  let renderedLines;
-  if (useAnchor) {
-    const padWidth = String(useAnchor.end).length;
-    renderedLines = sliceLines.map((line, i) =>
-      `${String(useAnchor.start + i).padStart(padWidth, " ")}: ${line}`,
-    );
-  } else {
-    renderedLines = sliceLines;
-  }
-
-  let rendered = renderedLines.join("\n");
-  let truncatedChars = 0;
-  if (rendered.length > MAX_FILE_CHARS) {
-    truncatedChars = rendered.length - MAX_FILE_CHARS;
-    rendered = rendered.slice(0, MAX_FILE_CHARS);
-  }
-
-  const fence = fenceFor(rendered);
-  const lang = EXTENSION_LANGUAGE[fileExtension(path)] || "";
-
-  const headingSuffix = useAnchor
-    ? ` - lines ${useAnchor.start}-${useAnchor.end}`
-    : "";
-  const urlAnchor = useAnchor
-    ? `#L${useAnchor.start}-L${useAnchor.end}`
+  const urlAnchor = body.useAnchor
+    ? `#L${body.useAnchor.start}-L${body.useAnchor.end}`
     : "";
   const encodedPath = encodeUrlPath(path);
   const encodedRef = encodeUrlPath(ref);
 
   const lines = [];
-  lines.push(`#### File ${owner}/${repo}@${ref} - ${path}${headingSuffix}`);
+  lines.push(`#### File ${owner}/${repo}@${ref} - ${path}${body.headingSuffix}`);
   lines.push(`- URL: https://github.com/${owner}/${repo}/blob/${encodedRef}/${encodedPath}${urlAnchor}`);
   lines.push(`- Ref: ${ref}`);
-  lines.push(`- Size: ${content.length} chars, ${totalLines} lines`);
-  if (outOfRange) {
-    const requested = anchor.start === anchor.end
-      ? `#L${anchor.start}`
-      : `#L${anchor.start}-L${anchor.end}`;
-    lines.push(`- Note: line anchor ${requested} is out of range (file has ${totalLines} lines); showing the full file`);
+  lines.push(`- Size: ${content.length} chars, ${body.totalLines} lines`);
+  if (body.outOfRange) {
+    lines.push(`- ${outOfRangeNote(anchor, body.totalLines)}`);
   }
   lines.push("");
-  lines.push(`${fence}${lang}`);
-  lines.push(rendered);
-  lines.push(fence);
-  if (truncatedChars > 0) {
-    lines.push("");
-    const hint = useAnchor
-      ? "Try a smaller line range."
-      : "For specific lines, paste with #L10-L20.";
-    lines.push(`...(content truncated, ${truncatedChars} more chars). ${hint}`);
+  lines.push(`${body.fence}${body.lang}`);
+  lines.push(body.rendered);
+  lines.push(body.fence);
+  const tail = truncationSuffix(body.truncatedChars, !!body.useAnchor);
+  if (tail) {
+    lines.push("", tail);
   }
   lines.push("");
   lines.push(
