@@ -301,6 +301,78 @@ esac
     assert.match(parsed.hookSpecificOutput.additionalContext, /# Hello/);
   });
 
+  it("enriches a GitHub file URL via stubbed gh", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/contents/src/x.py"*)
+    cat <<'PY'
+def hello():
+    return "world"
+
+def goodbye():
+    return "bye"
+PY
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-file-1",
+      cwd: process.cwd(),
+      user_prompt: "look at https://github.com/me/proj/blob/main/src/x.py#L1-L2",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: file me\/proj:src\/x\.py#L1-L2/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /File me\/proj@main - src\/x\.py - lines 1-2/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /1: def hello\(\):/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /2:     return "world"/);
+    assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /3: /);
+  });
+
+  it("does NOT enrich a /blob/ URL as a repo (no README dump)", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/contents/missing.py"*)
+    exit 1
+    ;;
+  "api repos/me/proj")
+    echo "should not be called for a /blob/ URL" >&2
+    exit 99
+    ;;
+  "api repos/me/proj/readme"*)
+    echo "should not be called for a /blob/ URL" >&2
+    exit 99
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-file-2",
+      cwd: process.cwd(),
+      user_prompt: "see https://github.com/me/proj/blob/main/missing.py",
+    });
+
+    assert.equal(code, 0);
+    // Fetch failed for the file; the repo provider must not have run, so
+    // no enrichment is emitted at all.
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+  });
+
   it("enriches multiple providers in a single prompt", async () => {
     await writeStub(
       "gh",

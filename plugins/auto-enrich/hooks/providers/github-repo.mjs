@@ -15,6 +15,7 @@ const REPO_URL_PATTERN =
 const RESERVED_REPO_SUBPATHS = new Set([
   "pull", "issues", "pulls", "actions", "discussions", "releases",
   "wiki", "settings", "security", "network", "pulse", "graphs", "compare",
+  "blob", "raw", "tree", "blame", "commit", "commits",
 ]);
 
 /**

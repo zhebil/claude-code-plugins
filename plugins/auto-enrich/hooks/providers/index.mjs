@@ -1,3 +1,4 @@
+import { githubFileProvider } from "./github-file.mjs";
 import { githubIssueProvider } from "./github-issue.mjs";
 import { githubRepoProvider } from "./github-repo.mjs";
 import { jiraProvider } from "./jira.mjs";
@@ -82,6 +83,7 @@ import { sentryProvider } from "./sentry.mjs";
  */
 export const providers = [
   githubIssueProvider,
+  githubFileProvider,
   githubRepoProvider,
   jiraProvider,
   sentryProvider,
