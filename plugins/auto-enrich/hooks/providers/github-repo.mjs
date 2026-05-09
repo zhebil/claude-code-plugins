@@ -1,7 +1,6 @@
 import { safeJsonParse } from "../lib/json.mjs";
 import { isInsideCode } from "../lib/code-ranges.mjs";
-
-const MAX_README_CHARS = 12000;
+import { renderEntity, truncateReadme } from "../lib/render-entity.mjs";
 
 // Repo name regex allows dots only between word chars, so trailing
 // punctuation (period, question mark, exclamation) at the end of a sentence
@@ -39,13 +38,9 @@ export const githubRepoProvider = {
   name: "github-repo",
 
   /**
-   * Find every plain repo URL in `text`, excluding code spans and reserved
-   * sub-paths (issues/pull/actions/etc.).
-   *
    * @param {string} text
    * @param {[number, number][]} codeRanges
-   * @param {import("./index.mjs").EnrichmentContext} [_ctx] Unused; kept for
-   *   contract compatibility with other providers.
+   * @param {import("./index.mjs").EnrichmentContext} [_ctx]
    * @returns {GithubRepoMatch[]}
    */
   detect(text, codeRanges, _ctx) {
@@ -86,50 +81,40 @@ export const githubRepoProvider = {
     return formatRepo({ owner, repo, meta, readme });
   },
 
-  /**
-   * @param {GithubRepoMatch} match
-   * @returns {string}
-   */
   summarize(match) {
     return `repo ${match.owner}/${match.repo}`;
   },
 };
 
 /**
- * Render the markdown block. Pure function.
- *
  * @param {Object} args
  * @param {string} args.owner
  * @param {string} args.repo
- * @param {Object|null} args.meta `gh api repos/owner/repo` response.
- * @param {string} args.readme Raw README text (may be empty).
+ * @param {Object|null} args.meta
+ * @param {string} args.readme
  * @returns {string}
  */
 function formatRepo({ owner, repo, meta, readme }) {
-  const lines = [];
   const desc = meta?.description ? `: ${meta.description}` : "";
-  lines.push(`#### Repo ${owner}/${repo}${desc}`);
-  if (meta?.html_url) lines.push(`- URL: ${meta.html_url}`);
-  if (meta?.language) lines.push(`- Language: ${meta.language}`);
-  if (meta?.default_branch) lines.push(`- Default branch: ${meta.default_branch}`);
-  if (meta?.stargazers_count != null) lines.push(`- Stars: ${meta.stargazers_count}`);
-  if (meta?.archived) lines.push("- Archived: yes");
-  if (meta?.fork) lines.push("- Fork: yes");
-  if (meta?.license?.spdx_id && meta.license.spdx_id !== "NOASSERTION") {
-    lines.push(`- License: ${meta.license.spdx_id}`);
-  }
+  const license = meta?.license?.spdx_id;
 
-  const trimmed = readme.trim();
-  if (trimmed) {
-    const body = trimmed.length > MAX_README_CHARS
-      ? `${trimmed.slice(0, MAX_README_CHARS)}\n\n...(README truncated, ${trimmed.length - MAX_README_CHARS} more chars)`
-      : trimmed;
-    lines.push("", "**README:**", body);
-  }
+  const bullets = [
+    ["URL", meta?.html_url],
+    ["Language", meta?.language],
+    ["Default branch", meta?.default_branch],
+    meta?.stargazers_count != null ? ["Stars", meta.stargazers_count] : null,
+    meta?.archived ? ["Archived", "yes"] : null,
+    meta?.fork ? ["Fork", "yes"] : null,
+    license && license !== "NOASSERTION" ? ["License", license] : null,
+  ];
 
-  lines.push(
-    "",
-    `Refetch full README: \`gh api repos/${owner}/${repo}/readme -H "Accept: application/vnd.github.raw"\``,
-  );
-  return lines.join("\n");
+  const readmeText = truncateReadme(readme);
+  const body = readmeText ? { title: "README", text: readmeText } : null;
+
+  return renderEntity({
+    heading: `Repo ${owner}/${repo}${desc}`,
+    bullets,
+    body,
+    refetch: `Refetch full README: \`gh api repos/${owner}/${repo}/readme -H "Accept: application/vnd.github.raw"\``,
+  });
 }

@@ -1,7 +1,6 @@
 import { safeJsonParse } from "../lib/json.mjs";
 import { isInsideCode } from "../lib/code-ranges.mjs";
-
-const MAX_README_CHARS = 12000;
+import { renderEntity, truncateReadme } from "../lib/render-entity.mjs";
 
 // Matches at least two path segments; subgroups make the leading run
 // repeatable. `[\w.-]+` admits a literal `-` segment, so `/-/` (GitLab's
@@ -96,10 +95,6 @@ export const gitlabRepoProvider = {
     return formatRepo({ fullPath, meta, readme });
   },
 
-  /**
-   * @param {GitlabRepoMatch} match
-   * @returns {string}
-   */
   summarize(match) {
     return `glab-repo ${match.fullPath}`;
   },
@@ -122,34 +117,32 @@ function parseReadmeFromUrl(readmeUrl) {
 }
 
 /**
- * Render the markdown block. Pure function.
- *
  * @param {Object} args
  * @param {string} args.fullPath
- * @param {Object} args.meta `glab api projects/:id` response.
- * @param {string} args.readme Raw README text (may be empty).
+ * @param {Object} args.meta
+ * @param {string} args.readme
  * @returns {string}
  */
 function formatRepo({ fullPath, meta, readme }) {
-  const lines = [];
   const desc = meta.description ? `: ${meta.description}` : "";
-  lines.push(`#### Project ${fullPath}${desc}`);
-  if (meta.web_url) lines.push(`- URL: ${meta.web_url}`);
-  if (meta.default_branch) lines.push(`- Default branch: ${meta.default_branch}`);
-  if (meta.visibility) lines.push(`- Visibility: ${meta.visibility}`);
-  if (meta.star_count != null) lines.push(`- Stars: ${meta.star_count}`);
-  if (meta.archived) lines.push("- Archived: yes");
-  if (meta.license?.key) lines.push(`- License: ${meta.license.key}`);
 
-  const trimmed = (readme ?? "").trim();
-  if (trimmed) {
-    const body = trimmed.length > MAX_README_CHARS
-      ? `${trimmed.slice(0, MAX_README_CHARS)}\n\n...(README truncated, ${trimmed.length - MAX_README_CHARS} more chars)`
-      : trimmed;
-    lines.push("", "**README:**", body);
-  }
+  const bullets = [
+    ["URL", meta.web_url],
+    ["Default branch", meta.default_branch],
+    ["Visibility", meta.visibility],
+    meta.star_count != null ? ["Stars", meta.star_count] : null,
+    meta.archived ? ["Archived", "yes"] : null,
+    meta.license?.key ? ["License", meta.license.key] : null,
+  ];
+
+  const readmeText = truncateReadme(readme);
+  const body = readmeText ? { title: "README", text: readmeText } : null;
 
   const encoded = encodeURIComponent(fullPath);
-  lines.push("", `Refetch: \`glab api projects/${encoded}\``);
-  return lines.join("\n");
+  return renderEntity({
+    heading: `Project ${fullPath}${desc}`,
+    bullets,
+    body,
+    refetch: `Refetch: \`glab api projects/${encoded}\``,
+  });
 }
