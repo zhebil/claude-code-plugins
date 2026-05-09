@@ -12,7 +12,7 @@ The repo is owned by GitHub user `zhebil`; pushes need the `git@github.com-perso
 
 ### auto-enrich
 
-Pulls compact markdown context for any GitHub/Jira/Sentry references in the user's prompt, using local CLIs (`gh`, `acli`, `sentry`) only. No AI calls.
+Pulls compact markdown context for any GitHub/GitLab/Jira/Sentry references in the user's prompt, using local CLIs (`gh`, `glab`, `acli`, `sentry`) only. No AI calls.
 
 Three hook events are registered in `hooks/hooks.json`:
 
@@ -37,7 +37,7 @@ plugins/auto-enrich/
 │   └── providers/         one file per source + index.mjs registry
 └── test/
     ├── unit/              pure tests; CLI calls stubbed via injected ctx.runner
-    └── e2e/               spawns auto-enrich.mjs with stub gh/acli/sentry on PATH
+    └── e2e/               spawns auto-enrich.mjs with stub gh/glab/acli/sentry on PATH
 ```
 
 #### Provider contract

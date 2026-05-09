@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "auto-enrich",
-  "version": "1.2.0",
-  "description": "Auto-enrich user prompts with context for Jira tickets, GitHub PRs/issues/repos/files, and Sentry issues.",
+  "version": "1.3.0",
+  "description": "Auto-enrich user prompts with context for Jira tickets, GitHub PRs/issues/repos/files, GitLab issues/MRs/projects/files, and Sentry issues.",
   "author": {
     "name": "Zhebil"
   },
   "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/auto-enrich",
   "repository": "https://github.com/zhebil/claude-code-plugins",
   "license": "MIT",
-  "keywords": ["hooks", "jira", "github", "sentry", "context"]
+  "keywords": ["hooks", "jira", "github", "gitlab", "sentry", "context"]
 }

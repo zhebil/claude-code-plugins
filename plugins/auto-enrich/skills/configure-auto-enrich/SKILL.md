@@ -1,13 +1,13 @@
 ---
 name: configure-auto-enrich
-description: Explain the auto-enrich plugin to the user and show them how it's currently configured + what they can change. Use ONLY when the user explicitly invokes `/auto-enrich:configure-auto-enrich` or asks to set up / configure / inspect / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, Jira, Sentry, or "context enrichment".
+description: Explain the auto-enrich plugin to the user and show them how it's currently configured + what they can change. Use ONLY when the user explicitly invokes `/auto-enrich:configure-auto-enrich` or asks to set up / configure / inspect / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, GitLab, Jira, Sentry, or "context enrichment".
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # auto-enrich: explain + configure
 
-User-invoked only. Don't run as a side effect of unrelated work. If the user mentions Jira / GitHub / Sentry without asking to configure auto-enrich, ignore this skill.
+User-invoked only. Don't run as a side effect of unrelated work. If the user mentions Jira / GitHub / GitLab / Sentry without asking to configure auto-enrich, ignore this skill.
 
 ## What this skill does
 
@@ -21,8 +21,8 @@ The user already triggered the skill because they want information. Lead with th
 
 Open with a single tight paragraph. Cover:
 
-- **What it does**: when the user submits a prompt mentioning a GitHub PR/issue/repo/file, Jira ticket, or Sentry issue, the plugin runs *before* Claude reads the prompt and prepends a compact markdown summary of that reference fetched via local CLIs (`gh`, `acli` or `jira`, `sentry`). GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`) embed the file contents, with optional `#L10-L20` line anchors for slicing.
-- **Why it needs CLI auth**: the plugin doesn't store credentials. It just runs the CLIs as the user, so the CLIs need to be logged in to GitHub / Atlassian / Sentry on their own. There's nothing to "configure" auth-wise inside the plugin.
+- **What it does**: when the user submits a prompt mentioning a GitHub PR/issue/repo/file, GitLab issue/MR/project/file, Jira ticket, or Sentry issue, the plugin runs *before* Claude reads the prompt and prepends a compact markdown summary of that reference fetched via local CLIs (`gh`, `glab`, `acli` or `jira`, `sentry`). GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`) and GitLab file URLs (`/-/blob/`, `/-/raw/`) embed the file contents, with optional line anchors for slicing.
+- **Why it needs CLI auth**: the plugin doesn't store credentials. It just runs the CLIs as the user, so the CLIs need to be logged in to GitHub / GitLab / Atlassian / Sentry on their own. There's nothing to "configure" auth-wise inside the plugin.
 - **Code blocks are skipped**: refs inside backticks or fenced blocks are never enriched.
 - **Each ref is enriched once per session** (dedup state in `$CLAUDE_PLUGIN_DATA/seen.json`, preserved across `/compact`).
 
@@ -35,6 +35,7 @@ Without asking, run the install + auth + config checks at the same time. Use a s
 The checks:
 
 - `command -v gh && gh auth status 2>&1 | head -8`
+- `command -v glab && glab auth status 2>&1 | head -8`
 - `command -v acli && acli jira workitem search --jql 'assignee = currentUser()' --limit 1 2>&1 | head -3`
 - `command -v jira && jira me 2>&1 | head -3`
 - `command -v sentry && sentry org list --json 2>&1 | head -3`
@@ -48,7 +49,7 @@ If `command -v` returns empty in the Claude Code subshell, also try `zsh -lc 'co
 
 After the parallel batch returns, render a small table or bulleted summary that the user can read at a glance. Include:
 
-- Each built-in provider (`github-issue`, `github-file`, `github-repo`, `jira`, `sentry`) and whether it's currently enabled (default = on, disabled only if `config.json` says so).
+- Each built-in provider (`github-issue`, `github-file`, `github-repo`, `gitlab-issue`, `gitlab-file`, `gitlab-repo`, `jira`, `sentry`) and whether it's currently enabled (default = on, disabled only if `config.json` says so).
 - The CLI each provider needs, and whether that CLI is installed + authed.
 - For Jira specifically, which backend is selected (`acli` default, or `jira-cli`).
 - Where the config file lives, and whether one exists right now.
@@ -81,6 +82,9 @@ The config schema, for reference:
     "github-issue": { "enabled": true },
     "github-file":  { "enabled": true },
     "github-repo":  { "enabled": true },
+    "gitlab-issue": { "enabled": true },
+    "gitlab-file":  { "enabled": true },
+    "gitlab-repo":  { "enabled": true },
     "jira":         { "enabled": true, "cli": "acli" }, // "acli" | "jira-cli"
     "sentry":       { "enabled": true }
   },
@@ -100,7 +104,7 @@ If the user says they want to add support for something not built-in (Linear, Sh
 2. Have them copy it to `~/.claude/auto-enrich/providers/<name>.provider.mjs`. The `.provider.mjs` suffix is required - other files in that directory are ignored silently.
 3. Explain that they need to **start a new Claude Code session** for the new provider to take effect (`/exit` then `claude` again). `/reload-plugins` does NOT re-run `SessionStart`, so it won't pick up new or edited provider files.
 4. After restart, `cat $CLAUDE_PLUGIN_DATA/discovery.json` to confirm validation passed and the provider is listed.
-5. **Mention upstream as an option, once**: if the tracker is a public product others might use (Linear, Shortcut, GitLab, Bitbucket, Asana, etc.), you can note that <https://github.com/zhebil/claude-code-plugins> takes PRs for new built-ins, and that the contract + test patterns to follow live in `plugins/auto-enrich/docs/custom-providers.md` and `plugins/auto-enrich/test/`. Phrase it as a possibility, not a recommendation - say it once and drop it. Don't characterize where the provider "belongs"; the user knows their own situation. Skip this entirely for clearly internal/proprietary trackers.
+5. **Mention upstream as an option, once**: if the tracker is a public product others might use (Linear, Shortcut, Bitbucket, Asana, etc. - GitHub, GitLab, Jira, and Sentry are already built in), you can note that <https://github.com/zhebil/claude-code-plugins> takes PRs for new built-ins, and that the contract + test patterns to follow live in `plugins/auto-enrich/docs/custom-providers.md` and `plugins/auto-enrich/test/`. Phrase it as a possibility, not a recommendation - say it once and drop it. Don't characterize where the provider "belongs"; the user knows their own situation. Skip this entirely for clearly internal/proprietary trackers.
 
 For the full contract spec (validation rules, lifecycle, EnrichmentContext fields, replacing a built-in), point at `plugins/auto-enrich/docs/custom-providers.md`.
 
@@ -108,7 +112,7 @@ For the full contract spec (validation rules, lifecycle, EnrichmentContext field
 
 This is security-sensitive. Don't bring it up unprompted. If the user asks about it:
 
-> Adding a path to `trustedProjects` grants that repository execute-on-session-start privileges. Every `*.provider.mjs` checked into `<repo>/.claude/auto-enrich/providers/` - including any added by future commits or merged PRs - will be `import()`-ed in the hook's Node process, with access to your working tree, env, and any tokens `gh` / `acli` / `sentry` can reach. **Trust only repos whose contributor list is fully under your control.**
+> Adding a path to `trustedProjects` grants that repository execute-on-session-start privileges. Every `*.provider.mjs` checked into `<repo>/.claude/auto-enrich/providers/` - including any added by future commits or merged PRs - will be `import()`-ed in the hook's Node process, with access to your working tree, env, and any tokens `gh` / `glab` / `acli` / `sentry` can reach. **Trust only repos whose contributor list is fully under your control.**
 
 If they still want it, add the absolute project path to `trustedProjects` in the **global** config. Match is exact - no glob, no prefix walk. An in-repo `config.json` cannot grant itself trust. Resolution order: built-ins > global custom > project custom; name collisions are rejected with a stderr warning.
 

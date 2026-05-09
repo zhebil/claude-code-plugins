@@ -50,9 +50,9 @@ name (see [Replacing a built-in](#replacing-a-built-in)).
 > checked in to that repo - including files added by future commits or
 > merged pull requests - will be dynamic-imported, and its top-level
 > code will run inside the hook's Node process with access to your
-> working tree, environment, and any tokens local CLIs (`gh`, `acli`,
-> `sentry`) can reach. Trust only repositories whose contributor list
-> is fully under your control.
+> working tree, environment, and any tokens local CLIs (`gh`, `glab`,
+> `acli`, `sentry`) can reach. Trust only repositories whose contributor
+> list is fully under your control.
 
 A project can ship its own providers under
 `<projectRoot>/.claude/auto-enrich/providers/*.provider.mjs`, but the
@@ -87,8 +87,8 @@ next prompt without needing a SessionStart re-run.
 
 **Why this matters.** Every `*.provider.mjs` is dynamic-imported into
 the hook's Node process - the same process that has access to your
-working tree, environment, and any tokens local CLIs (`gh`, `acli`,
-`sentry`) can reach. A malicious provider could exfiltrate or modify
+working tree, environment, and any tokens local CLIs (`gh`, `glab`,
+`acli`, `sentry`) can reach. A malicious provider could exfiltrate or modify
 anything the hook can. The trust list keeps that surface to projects
 you've consciously vouched for.
 
@@ -136,7 +136,7 @@ export default {
 | Field         | Type        | Notes |
 |---------------|-------------|-------|
 | `apiVersion`  | `1`         | Forward-compat sentinel. Must be `1`. The plugin will reject other values without trying to load the module. Bumping this number is how the plugin will introduce breaking contract changes; future versions are expected to support multiple `apiVersion` values side-by-side so old providers keep working. |
-| `name`        | `string`    | Stable id, non-empty. Doubles as the key under `ctx.state` and `config.providers`. Must NOT collide with any built-in (`github-issue`, `github-file`, `github-repo`, `jira`, `sentry`) or any earlier-loaded custom provider. |
+| `name`        | `string`    | Stable id, non-empty. Doubles as the key under `ctx.state` and `config.providers`. Must NOT collide with any built-in (`github-issue`, `github-file`, `github-repo`, `gitlab-issue`, `gitlab-file`, `gitlab-repo`, `jira`, `sentry`) or any earlier-loaded custom provider. |
 | `detect`      | `function`  | Synchronous reference detector. See [`detect`](#detecttext-coderanges-ctx-match). |
 | `fetch`       | `function`  | Async fetcher returning markdown or `null`. See [`fetch`](#fetchmatch-ctx-promisestringnull). |
 | `summarize`   | `function`  | Pure label for the visible stderr line. See [`summarize`](#summarizematch-string). |

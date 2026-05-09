@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "auto-enrich",
-      "description": "Auto-enrich Claude Code prompts with Jira, GitHub, and Sentry context.",
+      "description": "Auto-enrich Claude Code prompts with Jira, GitHub, GitLab, and Sentry context.",
       "author": {
         "name": "Zhebil"
       },
@@ -16,7 +16,7 @@
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
-      "tags": ["jira", "github", "sentry", "hooks", "context", "claude-code-plugin"],
+      "tags": ["jira", "github", "gitlab", "sentry", "hooks", "context", "claude-code-plugin"],
       "source": "./plugins/auto-enrich"
     }
   ]

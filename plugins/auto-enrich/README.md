@@ -8,6 +8,9 @@ Claude Code plugin that enriches submitted prompts with compact context for refe
 - GitHub PR/issue URLs, `owner/repo#123`, and bare `#123` in a GitHub repo
 - GitHub repository URLs, including README content
 - GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`), with optional `#L10-L20` line anchors
+- GitLab issue and merge request URLs (`gitlab.com/<group>/.../-/issues/N`, `.../-/merge_requests/N`), including subgroups
+- GitLab project URLs (`gitlab.com/<group>/<project>`), including README content
+- GitLab file URLs (`/-/blob/`, `/-/raw/`), with optional `#L10-20` or `#L10-L20` line anchors
 - Sentry issue URLs
 
 Matches inside inline code or fenced code blocks are ignored. Each entity is enriched once per Claude Code session.
@@ -17,6 +20,7 @@ Matches inside inline code or fenced code blocks are ignored. Each entity is enr
 The plugin uses local CLIs and silently skips entities that cannot be fetched:
 
 - `gh` authenticated for GitHub
+- `glab` authenticated for GitLab
 - One of: `acli` (default) or `jira` (ankitpokhrel/jira-cli) authenticated for Jira
 - `sentry` authenticated for Sentry
 - Node.js available as `node`
@@ -25,7 +29,7 @@ The plugin uses local CLIs and silently skips entities that cannot be fetched:
 
 This plugin fetches referenced third-party context and injects it into the Claude Code conversation before Claude processes your prompt.
 
-It does not store credentials. It relies on your existing CLI authentication for `gh`, `acli`, and `sentry`.
+It does not store credentials. It relies on your existing CLI authentication for `gh`, `glab`, `acli`, and `sentry`.
 
 Session dedupe state is stored under `${CLAUDE_PLUGIN_DATA}/seen.json` and contains only reference IDs already enriched in the current session.
 
@@ -68,12 +72,12 @@ The plugin ships a setup skill. Inside Claude Code, type:
 
 and press enter. Claude will:
 
-- Briefly explain what the plugin does and why it needs your CLIs (`gh`, `acli` / `jira`, `sentry`) to be authenticated.
+- Briefly explain what the plugin does and why it needs your CLIs (`gh`, `glab`, `acli` / `jira`, `sentry`) to be authenticated.
 - Detect what you have installed and authed in one pass.
 - Show your current config (or note that defaults apply) and list what you can change - toggle providers, switch the Jira backend between `acli` and `jira-cli`, scaffold a custom provider, etc.
 - Make only the changes you ask for, with a diff preview before writing.
 
-The skill is **user-invoked only** (`disable-model-invocation: true`) - Claude won't trigger it from generic mentions of GitHub / Jira / Sentry. You always have to type the slash command.
+The skill is **user-invoked only** (`disable-model-invocation: true`) - Claude won't trigger it from generic mentions of GitHub / GitLab / Jira / Sentry. You always have to type the slash command.
 
 If you skip configuration entirely, the plugin runs with defaults: every provider on, `acli` for Jira, no trusted projects.
 
@@ -88,6 +92,9 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
     "github-issue": { "enabled": true },
     "github-file":  { "enabled": true },
     "github-repo":  { "enabled": true },
+    "gitlab-issue": { "enabled": true },
+    "gitlab-file":  { "enabled": true },
+    "gitlab-repo":  { "enabled": true },
     "jira":         { "enabled": true, "cli": "acli" },
     "sentry":       { "enabled": true }
   },
@@ -129,7 +136,7 @@ threat model as before).
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `providers.<name>.enabled` | boolean | `true` | When `false`, the provider's `prepare`/`detect`/`fetch` are not run. Built-in `<name>` values: `github-issue`, `github-file`, `github-repo`, `jira`, `sentry`. |
+| `providers.<name>.enabled` | boolean | `true` | When `false`, the provider's `prepare`/`detect`/`fetch` are not run. Built-in `<name>` values: `github-issue`, `github-file`, `github-repo`, `gitlab-issue`, `gitlab-file`, `gitlab-repo`, `jira`, `sentry`. |
 | `providers.jira.cli` | `"acli" \| "jira-cli"` | `"acli"` | Backend CLI for the Jira provider. `"jira-cli"` selects ankitpokhrel/jira-cli (binary `jira`). Unknown values fall back to `"acli"`. |
 | `trustedProjects` | `string[]` | `[]` | Absolute project-root paths whose `<cwd>/.claude/auto-enrich/providers/*.provider.mjs` files are loaded at `SessionStart`. Match is exact against the resolved cwd - subdirectories of a trusted entry are NOT trusted. Honored only when set in the GLOBAL config; an in-repo config cannot grant itself trust. See [docs/custom-providers.md](docs/custom-providers.md#project-level-providers) for the security model. |
 
