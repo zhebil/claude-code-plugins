@@ -7,6 +7,7 @@ Claude Code plugin that enriches submitted prompts with compact context for refe
 - Jira URLs and bare keys like `ABC-123`
 - GitHub PR/issue URLs, `owner/repo#123`, and bare `#123` in a GitHub repo
 - GitHub repository URLs, including README content
+- GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`), with optional `#L10-L20` line anchors
 - Sentry issue URLs
 
 Matches inside inline code or fenced code blocks are ignored. Each entity is enriched once per Claude Code session.
@@ -85,6 +86,7 @@ The config lives at `${CLAUDE_PLUGIN_DATA}/config.json` (or
 {
   "providers": {
     "github-issue": { "enabled": true },
+    "github-file":  { "enabled": true },
     "github-repo":  { "enabled": true },
     "jira":         { "enabled": true, "cli": "acli" },
     "sentry":       { "enabled": true }
@@ -127,7 +129,7 @@ threat model as before).
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `providers.<name>.enabled` | boolean | `true` | When `false`, the provider's `prepare`/`detect`/`fetch` are not run. Built-in `<name>` values: `github-issue`, `github-repo`, `jira`, `sentry`. |
+| `providers.<name>.enabled` | boolean | `true` | When `false`, the provider's `prepare`/`detect`/`fetch` are not run. Built-in `<name>` values: `github-issue`, `github-file`, `github-repo`, `jira`, `sentry`. |
 | `providers.jira.cli` | `"acli" \| "jira-cli"` | `"acli"` | Backend CLI for the Jira provider. `"jira-cli"` selects ankitpokhrel/jira-cli (binary `jira`). Unknown values fall back to `"acli"`. |
 | `trustedProjects` | `string[]` | `[]` | Absolute project-root paths whose `<cwd>/.claude/auto-enrich/providers/*.provider.mjs` files are loaded at `SessionStart`. Match is exact against the resolved cwd - subdirectories of a trusted entry are NOT trusted. Honored only when set in the GLOBAL config; an in-repo config cannot grant itself trust. See [docs/custom-providers.md](docs/custom-providers.md#project-level-providers) for the security model. |
 
@@ -167,6 +169,13 @@ examples, see [docs/custom-providers.md](docs/custom-providers.md).
 
 ```bash
 printf '%s' '{"session_id":"test","hook_event_name":"UserPromptSubmit","cwd":"'$PWD'","user_prompt":"look at https://github.com/anthropics/claude-code"}' \
+  | CLAUDE_PLUGIN_DATA="$(mktemp -d)" node hooks/auto-enrich.mjs
+```
+
+To exercise the file provider (with a line anchor):
+
+```bash
+printf '%s' '{"session_id":"test","hook_event_name":"UserPromptSubmit","cwd":"'$PWD'","user_prompt":"see https://github.com/anthropics/claude-code/blob/main/README.md#L1-L40"}' \
   | CLAUDE_PLUGIN_DATA="$(mktemp -d)" node hooks/auto-enrich.mjs
 ```
 

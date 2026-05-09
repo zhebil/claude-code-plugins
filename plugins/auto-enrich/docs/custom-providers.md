@@ -136,7 +136,7 @@ export default {
 | Field         | Type        | Notes |
 |---------------|-------------|-------|
 | `apiVersion`  | `1`         | Forward-compat sentinel. Must be `1`. The plugin will reject other values without trying to load the module. Bumping this number is how the plugin will introduce breaking contract changes; future versions are expected to support multiple `apiVersion` values side-by-side so old providers keep working. |
-| `name`        | `string`    | Stable id, non-empty. Doubles as the key under `ctx.state` and `config.providers`. Must NOT collide with any built-in (`github-issue`, `github-repo`, `jira`, `sentry`) or any earlier-loaded custom provider. |
+| `name`        | `string`    | Stable id, non-empty. Doubles as the key under `ctx.state` and `config.providers`. Must NOT collide with any built-in (`github-issue`, `github-file`, `github-repo`, `jira`, `sentry`) or any earlier-loaded custom provider. |
 | `detect`      | `function`  | Synchronous reference detector. See [`detect`](#detecttext-coderanges-ctx-match). |
 | `fetch`       | `function`  | Async fetcher returning markdown or `null`. See [`fetch`](#fetchmatch-ctx-promisestringnull). |
 | `summarize`   | `function`  | Pure label for the visible stderr line. See [`summarize`](#summarizematch-string). |

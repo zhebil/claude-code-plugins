@@ -21,7 +21,7 @@ The user already triggered the skill because they want information. Lead with th
 
 Open with a single tight paragraph. Cover:
 
-- **What it does**: when the user submits a prompt mentioning a GitHub PR/issue/repo, Jira ticket, or Sentry issue, the plugin runs *before* Claude reads the prompt and prepends a compact markdown summary of that reference fetched via local CLIs (`gh`, `acli` or `jira`, `sentry`).
+- **What it does**: when the user submits a prompt mentioning a GitHub PR/issue/repo/file, Jira ticket, or Sentry issue, the plugin runs *before* Claude reads the prompt and prepends a compact markdown summary of that reference fetched via local CLIs (`gh`, `acli` or `jira`, `sentry`). GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`) embed the file contents, with optional `#L10-L20` line anchors for slicing.
 - **Why it needs CLI auth**: the plugin doesn't store credentials. It just runs the CLIs as the user, so the CLIs need to be logged in to GitHub / Atlassian / Sentry on their own. There's nothing to "configure" auth-wise inside the plugin.
 - **Code blocks are skipped**: refs inside backticks or fenced blocks are never enriched.
 - **Each ref is enriched once per session** (dedup state in `$CLAUDE_PLUGIN_DATA/seen.json`, preserved across `/compact`).
@@ -48,7 +48,7 @@ If `command -v` returns empty in the Claude Code subshell, also try `zsh -lc 'co
 
 After the parallel batch returns, render a small table or bulleted summary that the user can read at a glance. Include:
 
-- Each built-in provider (`github-issue`, `github-repo`, `jira`, `sentry`) and whether it's currently enabled (default = on, disabled only if `config.json` says so).
+- Each built-in provider (`github-issue`, `github-file`, `github-repo`, `jira`, `sentry`) and whether it's currently enabled (default = on, disabled only if `config.json` says so).
 - The CLI each provider needs, and whether that CLI is installed + authed.
 - For Jira specifically, which backend is selected (`acli` default, or `jira-cli`).
 - Where the config file lives, and whether one exists right now.
@@ -79,6 +79,7 @@ The config schema, for reference:
 {
   "providers": {
     "github-issue": { "enabled": true },
+    "github-file":  { "enabled": true },
     "github-repo":  { "enabled": true },
     "jira":         { "enabled": true, "cli": "acli" }, // "acli" | "jira-cli"
     "sentry":       { "enabled": true }

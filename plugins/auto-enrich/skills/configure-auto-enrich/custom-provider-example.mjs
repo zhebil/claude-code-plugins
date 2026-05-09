@@ -64,7 +64,7 @@ export default {
 
   // Stable id. Doubles as the key under `ctx.state` (per-prompt scratch space)
   // and `config.providers` (user config). Must NOT collide with any built-in
-  // (`github-issue`, `github-repo`, `jira`, `sentry`) or any earlier-loaded
+  // (`github-issue`, `github-file`, `github-repo`, `jira`, `sentry`) or any earlier-loaded
   // custom provider.
   name: "linear",
 

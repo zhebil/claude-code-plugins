@@ -6,7 +6,7 @@ Personal Claude Code plugin marketplace.
 
 ### auto-enrich
 
-Auto-enriches submitted prompts with compact context for referenced Jira tickets, GitHub PRs/issues/repos, and Sentry issues.
+Auto-enriches submitted prompts with compact context for referenced Jira tickets, GitHub PRs/issues/repos/files, and Sentry issues.
 
 It runs as a `UserPromptSubmit` hook and uses local CLIs only. No AI calls are made by the plugin itself.
 
