@@ -10,6 +10,10 @@ Auto-enriches submitted prompts with compact context for referenced Jira tickets
 
 It runs as a `UserPromptSubmit` hook and uses local CLIs only. No AI calls are made by the plugin itself.
 
+### hermes-tweet
+
+Hermes Agent plugin for X/Twitter research, profile reads, post reads, and gated write actions via Xquik. `tweet_explore` works without a key; read tools require `XQUIK_API_KEY`, and action tools also require `HERMES_TWEET_ENABLE_ACTIONS=true`.
+
 ## Install
 
 Add the marketplace:
@@ -22,6 +26,7 @@ Install the plugin:
 
 ```bash
 claude plugin install auto-enrich@zhebil-tools
+claude plugin install hermes-tweet@zhebil-tools
 ```
 
 Reload plugins or restart Claude Code:
