@@ -11,6 +11,21 @@ const MAX_MATCHES_PER_PROMPT = 8;
 const TOTAL_BUDGET_MS = 60_000;
 
 /**
+ * True when the hook is firing inside a subagent (Task tool) context rather
+ * than for a real user prompt to the main agent. Claude Code only includes
+ * `agent_id`/`agent_type` in the payload when a subagent is involved - both
+ * when a subagent processes its task prompt and when its completion re-fires
+ * UserPromptSubmit (anthropics/claude-code#16952). We enrich only genuine
+ * user input, so either field's presence means "skip".
+ *
+ * @param {Record<string, unknown>} input Parsed hook payload.
+ * @returns {boolean}
+ */
+function isSubagentContext(input) {
+  return Boolean(input.agent_id || input.agent_type);
+}
+
+/**
  * Read all of stdin into a string. Claude Code pipes the hook payload here.
  *
  * @returns {Promise<string>}
@@ -183,6 +198,7 @@ function emitHookOutput({ blocks, summaries }) {
  */
 async function main() {
   const input = safeJsonParse(await readStdin()) || {};
+  if (isSubagentContext(input)) return;
   const userPrompt = input.user_prompt || input.prompt || "";
   if (!userPrompt.trim()) return;
 

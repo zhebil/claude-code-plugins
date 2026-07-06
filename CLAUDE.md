@@ -77,7 +77,7 @@ The orchestrator never imports a provider directly; everything flows through the
 
 #### Orchestrator ordering
 
-`hooks/auto-enrich.mjs` does: prepare (parallel) → detect → dedup-by-id → drop-seen → cap to `MAX_MATCHES_PER_PROMPT` → fetch (sequential, under wall-clock budget) → emit → save seen-cache. The seen-filter must run *before* the cap, otherwise already-seen refs starve fresh ones (there's a regression test in `test/e2e`). Emit must run *before* the seen-cache write (and the write is wrapped in try/catch) so a read-only `$CLAUDE_PLUGIN_DATA` dir does not throw away enrichment that already cost CLI calls. Providers that make multiple sequential CLI calls should check `ctx.budgetExceeded()` between them.
+`hooks/auto-enrich.mjs` does: subagent-guard (bail if the payload has `agent_id`/`agent_type`, so only real main-agent user prompts enrich) → prepare (parallel) → detect → dedup-by-id → drop-seen → cap to `MAX_MATCHES_PER_PROMPT` → fetch (sequential, under wall-clock budget) → emit → save seen-cache. The seen-filter must run *before* the cap, otherwise already-seen refs starve fresh ones (there's a regression test in `test/e2e`). Emit must run *before* the seen-cache write (and the write is wrapped in try/catch) so a read-only `$CLAUDE_PLUGIN_DATA` dir does not throw away enrichment that already cost CLI calls. Providers that make multiple sequential CLI calls should check `ctx.budgetExceeded()` between them.
 
 #### Custom provider discovery
 

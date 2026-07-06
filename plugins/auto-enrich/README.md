@@ -5,7 +5,7 @@ Claude Code plugin that enriches submitted prompts with compact context for refe
 ## What it detects
 
 - Jira URLs and bare keys like `ABC-123`
-- GitHub PR/issue URLs, `owner/repo#123`, and bare `#123` in a GitHub repo
+- GitHub PR/issue URLs, `owner/repo#123`, and `PR#123` in a GitHub repo
 - GitHub repository URLs, including README content
 - GitHub file URLs (`/blob/`, `/raw/`, `raw.githubusercontent.com`), with optional `#L10-L20` line anchors
 - GitLab issue and merge request URLs (`gitlab.com/<group>/.../-/issues/N`, `.../-/merge_requests/N`), including subgroups
@@ -37,7 +37,7 @@ Session dedupe state is stored under `${CLAUDE_PLUGIN_DATA}/seen.json` and conta
 
 The plugin registers three Claude Code hooks (see `hooks/hooks.json`):
 
-- **`UserPromptSubmit`** -> `hooks/auto-enrich.mjs`. The main hook. Reads the submitted prompt JSON from stdin, detects references, fetches markdown via local CLIs, and emits the enriched context Claude sees.
+- **`UserPromptSubmit`** -> `hooks/auto-enrich.mjs`. The main hook. Reads the submitted prompt JSON from stdin, detects references, fetches markdown via local CLIs, and emits the enriched context Claude sees. Only real user prompts to the main agent are enriched; when the payload carries a subagent marker (`agent_id`/`agent_type`), the hook exits without enriching, so subagent task prompts and completions stay untouched.
 - **`SessionStart`** -> `hooks/discover.mjs`. Scans `~/.claude/auto-enrich/providers/` (and any trusted project dirs) for custom `*.provider.mjs` files, validates each against the contract, and writes a manifest the prompt hook reads.
 - **`SessionStart` (matcher: `compact`) and `PreCompact`** -> `hooks/compact-cleanup.mjs`. Stashes the session's seen-id list before a compaction and re-surfaces "previously attached" references after, so dedup state survives compaction without starving fresh refs.
 

@@ -4,8 +4,11 @@ import { renderEntity } from "../lib/render-entity.mjs";
 
 const FULL_URL_PATTERN = /https?:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/(?:pull|issues)\/(\d+)/g;
 const SHORT_REF_PATTERN = /(?<![\w/-])([\w.-]+)\/([\w.-]+)#(\d+)\b/g;
-const BARE_REF_PATTERN = /(?<![\w/#-])#(\d+)\b/g;
-const BARE_REF_DETECTOR = /(?<![\w/#-])#\d+\b/;
+// A bare `#123` produced too many false positives (every `#`-prefixed number
+// in a prompt got treated as a repo ref), so the prefix-less form now requires
+// an explicit `PR#` marker (case-insensitive) to opt in.
+const PR_REF_PATTERN = /(?<![\w/-])PR#(\d+)\b/gi;
+const PR_REF_DETECTOR = /(?<![\w/-])PR#\d+\b/i;
 
 const DEFAULT_REPO_TIMEOUT_MS = 5000;
 const STATE_KEY = "github-issue";
@@ -27,7 +30,7 @@ const STATE_KEY = "github-issue";
  *   - Full URL:    https://github.com/owner/repo/pull/123
  *   - Full URL:    https://github.com/owner/repo/issues/45
  *   - Short ref:   owner/repo#123
- *   - Bare ref:    #123  (only when the cwd is a GitHub repo)
+ *   - PR ref:      PR#123  (only when the cwd is a GitHub repo)
  *
  * References inside backticks (` ` or ``` blocks) are skipped via
  * {@link isInsideCode} - users can quote a token without triggering a fetch.
@@ -36,8 +39,8 @@ export const githubIssueProvider = {
   name: STATE_KEY,
 
   /**
-   * Resolve the cwd's GitHub repo (so bare `#123` refs can be expanded)
-   * if the prompt actually contains a bare ref. Stashes the result under
+   * Resolve the cwd's GitHub repo (so `PR#123` refs can be expanded)
+   * if the prompt actually contains a PR ref. Stashes the result under
    * `ctx.state["github-issue"].defaultRepo`. No-op when not needed.
    *
    * @param {string} text User prompt.
@@ -45,7 +48,7 @@ export const githubIssueProvider = {
    * @returns {Promise<void>}
    */
   async prepare(text, ctx) {
-    if (!BARE_REF_DETECTOR.test(text)) return;
+    if (!PR_REF_DETECTOR.test(text)) return;
     const r = await ctx.runner(
       "gh",
       ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
@@ -83,7 +86,7 @@ export const githubIssueProvider = {
     const defaultRepo = ctx.state[STATE_KEY]?.defaultRepo;
     if (defaultRepo) {
       const [owner, repo] = defaultRepo.split("/");
-      for (const m of text.matchAll(BARE_REF_PATTERN)) {
+      for (const m of text.matchAll(PR_REF_PATTERN)) {
         if (isInsideCode(m.index, codeRanges)) continue;
         push(owner, repo, m[1]);
       }

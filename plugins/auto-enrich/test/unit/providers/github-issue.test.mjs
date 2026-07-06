@@ -43,19 +43,35 @@ describe("githubIssueProvider.detect", () => {
     assert.equal(out[0].number, "42");
   });
 
-  it("resolves bare #N refs against state.defaultRepo", () => {
-    const out = detect("close #15", ctxWithDefaultRepo("me/proj"));
+  it("resolves PR#N refs against state.defaultRepo", () => {
+    const out = detect("close PR#15", ctxWithDefaultRepo("me/proj"));
     assert.equal(out.length, 1);
     assert.equal(out[0].id, "github:me/proj#15");
   });
 
-  it("ignores bare #N when no defaultRepo is supplied", () => {
-    assert.deepEqual(detect("close #15"), []);
+  it("matches PR#N case-insensitively", () => {
+    const out = detect("see pr#7 and Pr#8", ctxWithDefaultRepo("me/proj"));
+    assert.deepEqual(
+      out.map((m) => m.id),
+      ["github:me/proj#7", "github:me/proj#8"],
+    );
+  });
+
+  it("ignores PR#N when no defaultRepo is supplied", () => {
+    assert.deepEqual(detect("close PR#15"), []);
+  });
+
+  it("ignores bare #N even with a defaultRepo (avoids false positives)", () => {
+    assert.deepEqual(detect("resolves #15 and issue #42", ctxWithDefaultRepo("me/proj")), []);
+  });
+
+  it("does not match PR# embedded in a larger word", () => {
+    assert.deepEqual(detect("superPR#15", ctxWithDefaultRepo("me/proj")), []);
   });
 
   it("dedupes when the same ref appears in multiple shapes", () => {
     const text =
-      "https://github.com/me/proj/issues/3 vs me/proj#3 vs #3";
+      "https://github.com/me/proj/issues/3 vs me/proj#3 vs PR#3";
     const out = detect(text, ctxWithDefaultRepo("me/proj"));
     assert.equal(out.length, 1);
   });
@@ -77,10 +93,10 @@ describe("githubIssueProvider.detect", () => {
 });
 
 describe("githubIssueProvider.prepare", () => {
-  it("does nothing when prompt has no bare #N ref", async () => {
+  it("does nothing when prompt has no PR#N ref", async () => {
     const { runner, calls } = makeQueueRunner([]);
     const ctx = { cwd: "/tmp", runner, state: {} };
-    await githubIssueProvider.prepare("plain text owner/repo#1", ctx);
+    await githubIssueProvider.prepare("plain text owner/repo#1 and issue #9", ctx);
     assert.equal(calls.length, 0);
     assert.deepEqual(ctx.state, {});
   });
@@ -90,7 +106,7 @@ describe("githubIssueProvider.prepare", () => {
       { code: 0, stdout: "me/proj\n", stderr: "" },
     ]);
     const ctx = { cwd: "/tmp", runner, state: {} };
-    await githubIssueProvider.prepare("close #5", ctx);
+    await githubIssueProvider.prepare("close PR#5", ctx);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].command, "gh");
     assert.deepEqual(ctx.state["github-issue"], { defaultRepo: "me/proj" });
@@ -101,7 +117,7 @@ describe("githubIssueProvider.prepare", () => {
       { code: 1, stdout: "", stderr: "not a repo" },
     ]);
     const ctx = { cwd: "/tmp", runner, state: {} };
-    await githubIssueProvider.prepare("close #5", ctx);
+    await githubIssueProvider.prepare("close PR#5", ctx);
     assert.deepEqual(ctx.state, {});
   });
 
@@ -110,7 +126,7 @@ describe("githubIssueProvider.prepare", () => {
       { code: 0, stdout: "   \n", stderr: "" },
     ]);
     const ctx = { cwd: "/tmp", runner, state: {} };
-    await githubIssueProvider.prepare("close #5", ctx);
+    await githubIssueProvider.prepare("close PR#5", ctx);
     assert.deepEqual(ctx.state, {});
   });
 });

@@ -222,6 +222,91 @@ esac
     assert.equal(stderr, "");
   });
 
+  it("enriches a PR#N ref against the cwd's default repo via stubbed gh", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "repo view --json nameWithOwner -q .nameWithOwner")
+    echo "me/proj"
+    ;;
+  "api repos/me/proj/issues/5")
+    cat <<'JSON'
+{"title":"Fix it","state":"open","user":{"login":"alice"},"html_url":"https://github.com/me/proj/issues/5","body":"pr body"}
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-pr",
+      cwd: process.cwd(),
+      user_prompt: "please review PR#5",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: gh me\/proj#5/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /me\/proj#5: Fix it/);
+  });
+
+  it("does NOT enrich a bare #N ref (PR# prefix required)", async () => {
+    await writeStub("gh", `echo "stub should not be called" >&2; exit 99`);
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-bare",
+      cwd: process.cwd(),
+      user_prompt: "resolves #5 and closes #6",
+    });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+  });
+
+  it("does NOT enrich when running inside a subagent (agent_id / agent_type present)", async () => {
+    // gh SUCCEEDS here so that, absent the subagent guard, enrichment would
+    // happen and stdout would be non-empty. Empty output therefore proves the
+    // guard fired, not that a CLI call merely failed.
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/issues/3")
+    echo '{"title":"X","state":"open","user":{"login":"a"}}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const withAgentId = await runHook({
+      session_id: "e2e-sub",
+      cwd: process.cwd(),
+      agent_id: "sub-123",
+      user_prompt: "look at https://github.com/me/proj/issues/3",
+    });
+    assert.equal(withAgentId.code, 0);
+    assert.equal(withAgentId.stdout, "");
+    assert.equal(withAgentId.stderr, "");
+
+    const withAgentType = await runHook({
+      session_id: "e2e-sub",
+      cwd: process.cwd(),
+      agent_type: "code-reviewer",
+      user_prompt: "look at https://github.com/me/proj/issues/3",
+    });
+    assert.equal(withAgentType.code, 0);
+    assert.equal(withAgentType.stdout, "");
+    assert.equal(withAgentType.stderr, "");
+  });
+
   it("skips already-seen ids on a second invocation in the same session", async () => {
     await writeStub(
       "gh",
