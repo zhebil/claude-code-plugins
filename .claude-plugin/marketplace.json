@@ -16,8 +16,36 @@
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
-      "tags": ["jira", "github", "gitlab", "sentry", "hooks", "context", "claude-code-plugin"],
+      "tags": [
+        "jira",
+        "github",
+        "gitlab",
+        "sentry",
+        "hooks",
+        "context",
+        "claude-code-plugin"
+      ],
       "source": "./plugins/auto-enrich"
+    },
+    {
+      "name": "hermes-tweet",
+      "description": "Hermes Agent X/Twitter plugin for research, profile and post reads, and gated write actions through Xquik.",
+      "author": {
+        "name": "Xquik"
+      },
+      "homepage": "https://github.com/Xquik-dev/hermes-tweet",
+      "repository": "https://github.com/Xquik-dev/hermes-tweet",
+      "license": "MIT",
+      "category": "external-integrations",
+      "tags": [
+        "hermes-agent",
+        "x",
+        "twitter",
+        "xquik",
+        "social-media",
+        "claude-code-plugin"
+      ],
+      "source": "./plugins/hermes-tweet"
     }
   ]
 }
