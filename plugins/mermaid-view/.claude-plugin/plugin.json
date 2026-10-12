@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mermaid-view",
+  "version": "0.1.0",
+  "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal.",
+  "author": {
+    "name": "Zhebil"
+  },
+  "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/mermaid-view",
+  "repository": "https://github.com/zhebil/claude-code-plugins",
+  "license": "MIT",
+  "keywords": ["mod", "mermaid", "diagrams", "terminal"]
+}

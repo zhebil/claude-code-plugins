@@ -16,8 +16,35 @@
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
-      "tags": ["jira", "github", "gitlab", "sentry", "hooks", "context", "claude-code-plugin"],
+      "tags": [
+        "jira",
+        "github",
+        "gitlab",
+        "sentry",
+        "hooks",
+        "context",
+        "claude-code-plugin"
+      ],
       "source": "./plugins/auto-enrich"
+    },
+    {
+      "name": "mermaid-view",
+      "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal.",
+      "author": {
+        "name": "Zhebil"
+      },
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/mermaid-view",
+      "repository": "https://github.com/zhebil/claude-code-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "tags": [
+        "mod",
+        "mermaid",
+        "diagrams",
+        "terminal",
+        "claude-code-plugin"
+      ],
+      "source": "./plugins/mermaid-view"
     }
   ]
 }

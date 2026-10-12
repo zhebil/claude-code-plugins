@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bundle": "esbuild entry.mjs --bundle --format=esm --platform=neutral --minify --legal-comments=eof --outfile=../hooks/mermaid.bundle.mjs"
+  },
+  "devDependencies": {
+    "beautiful-mermaid": "1.1.3",
+    "esbuild": "^0.25.0"
+  }
+}
