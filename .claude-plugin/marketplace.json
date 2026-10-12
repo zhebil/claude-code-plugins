@@ -45,6 +45,25 @@
         "claude-code-plugin"
       ],
       "source": "./plugins/mermaid-view"
+    },
+    {
+      "name": "zed-open",
+      "description": "Adds a /zed command that opens the session's directory, or a path in it, in Zed.",
+      "author": {
+        "name": "Zhebil"
+      },
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/zed-open",
+      "repository": "https://github.com/zhebil/claude-code-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "tags": [
+        "mod",
+        "zed",
+        "editor",
+        "command",
+        "claude-code-plugin"
+      ],
+      "source": "./plugins/zed-open"
     }
   ]
 }

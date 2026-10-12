@@ -1,0 +1,4 @@
+{
+  "description": "Registers /zed and opens Zed in the session's directory",
+  "modules": ["./register.js"]
+}
