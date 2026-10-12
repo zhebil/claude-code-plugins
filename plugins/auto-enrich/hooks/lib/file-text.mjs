@@ -7,7 +7,8 @@
  * the slice/clamp/truncate/number-the-lines core of the rendered code block.
  */
 
-export const MAX_FILE_CHARS = 12000;
+/** Leaves room for the block header, refetch line and preamble under the 10,000-char hook context limit. */
+export const MAX_FILE_CHARS = 8000;
 
 /**
  * Extensions whose contents are not useful as text. Providers drop these in

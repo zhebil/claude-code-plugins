@@ -12,7 +12,8 @@
  * `bullets` array here.
  */
 
-const MAX_README_CHARS_DEFAULT = 12000;
+/** Leaves room for the repo metadata, refetch line and preamble under the 10,000-char hook context limit. */
+const MAX_README_CHARS_DEFAULT = 8000;
 
 /**
  * @typedef {[string, *]} Bullet `[label, value]`. `null`/`undefined`/`""`

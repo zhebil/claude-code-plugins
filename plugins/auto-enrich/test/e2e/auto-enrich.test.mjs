@@ -307,6 +307,132 @@ esac
     assert.equal(withAgentType.stderr, "");
   });
 
+  it("does NOT enrich a turn that is only a harness task notification", async () => {
+    // gh SUCCEEDS so empty output proves the harness block was stripped.
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/issues/3")
+    echo '{"title":"X","state":"open","user":{"login":"a"}}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-harness-1",
+      cwd: process.cwd(),
+      prompt: [
+        "<task-notification>",
+        "<task-id>abc</task-id>",
+        "<status>completed</status>",
+        "<result>Found https://github.com/me/proj/issues/3</result>",
+        "</task-notification>",
+      ].join("\n"),
+    });
+
+    assert.equal(code, 0);
+    assert.equal(stdout, "");
+    assert.equal(stderr, "");
+  });
+
+  it("enriches typed refs but not refs inside a system reminder", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/issues/3")
+    echo '{"title":"Typed","state":"open","user":{"login":"a"}}'
+    ;;
+  "api repos/me/proj/issues/4")
+    echo '{"title":"Injected","state":"open","user":{"login":"a"}}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, stderr, code } = await runHook({
+      session_id: "e2e-harness-2",
+      cwd: process.cwd(),
+      prompt: "look at https://github.com/me/proj/issues/3\n<system-reminder>\nhttps://github.com/me/proj/issues/4\n</system-reminder>",
+    });
+
+    assert.equal(code, 0);
+    assert.match(stderr, /^Auto-enriched: gh me\/proj#3$/m);
+    const parsed = JSON.parse(stdout);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Typed/);
+    assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /Injected/);
+  });
+
+  it("keeps a huge GitHub file within the 10,000-char hook context limit", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/contents/CHANGELOG.md"*)
+    yes "- Fixed something in a very long changelog line" | head -n 20000
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+
+    const { stdout, code } = await runHook({
+      session_id: "e2e-big-1",
+      cwd: process.cwd(),
+      prompt: "see https://github.com/me/proj/blob/main/CHANGELOG.md",
+    });
+
+    assert.equal(code, 0);
+    const context = JSON.parse(stdout).hookSpecificOutput.additionalContext;
+    assert.ok(context.length <= 10_000, `context is ${context.length} chars`);
+    assert.match(context, /Size: \d+ chars, 20000 lines/);
+    assert.match(context, /content truncated, \d+ more chars/);
+    assert.match(context, /Refetch: `gh api repos\/me\/proj\/contents\/CHANGELOG\.md/);
+    assert.match(context, /<\/external_content>$/);
+  });
+
+  it("bounds the total context across several large blocks and leaves the rest unseen", async () => {
+    await writeStub(
+      "gh",
+      `
+case "$*" in
+  "api repos/me/proj/contents/"*)
+    yes "a line of a large file" | head -n 2000
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`,
+    );
+    const prompt = [
+      "https://github.com/me/proj/blob/main/a.md",
+      "https://github.com/me/proj/blob/main/b.md",
+      "https://github.com/me/proj/blob/main/c.md",
+    ].join(" ");
+
+    const first = await runHook({ session_id: "e2e-big-2", cwd: process.cwd(), prompt });
+    assert.equal(first.code, 0);
+    const parsed = JSON.parse(first.stdout);
+    const context = parsed.hookSpecificOutput.additionalContext;
+    assert.ok(context.length <= 10_000, `context is ${context.length} chars`);
+    assert.equal(parsed.systemMessage, "Auto-enriched: file me/proj:a.md, file me/proj:b.md");
+    assert.match(context, /block truncated to fit the hook context limit\)\n<\/external_content>$/);
+
+    const second = await runHook({ session_id: "e2e-big-2", cwd: process.cwd(), prompt });
+    assert.equal(JSON.parse(second.stdout).systemMessage, "Auto-enriched: file me/proj:c.md");
+  });
+
   it("skips already-seen ids on a second invocation in the same session", async () => {
     await writeStub(
       "gh",
