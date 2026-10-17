@@ -7,15 +7,15 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ENRICH_HOOK = resolve(HERE, "../../hooks/auto-enrich.mjs");
+const ENRICH_HOOK = resolve(HERE, "../../hooks/unfurl-context.mjs");
 const COMPACT_HOOK = resolve(HERE, "../../hooks/compact-cleanup.mjs");
 
 let stubBinDir;
 let cacheDir;
 
 beforeEach(async () => {
-  stubBinDir = await mkdtemp(join(tmpdir(), "auto-enrich-compact-bin-"));
-  cacheDir = await mkdtemp(join(tmpdir(), "auto-enrich-compact-cache-"));
+  stubBinDir = await mkdtemp(join(tmpdir(), "unfurl-context-compact-bin-"));
+  cacheDir = await mkdtemp(join(tmpdir(), "unfurl-context-compact-cache-"));
 });
 
 afterEach(async () => {
@@ -141,7 +141,7 @@ esac
     assert.equal(start.code, 0);
     const parsed = JSON.parse(start.stdout);
     assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
-    assert.match(parsed.hookSpecificOutput.additionalContext, /Previously auto-enriched references/);
+    assert.match(parsed.hookSpecificOutput.additionalContext, /Previously unfurled references/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /github:me\/proj#3/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /gh me\/proj#3/);
     // Critically, the full body must NOT be re-emitted.

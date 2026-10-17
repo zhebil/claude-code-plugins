@@ -1,17 +1,17 @@
 ---
-name: configure-auto-enrich
-description: Explain the auto-enrich plugin to the user and show them how it's currently configured + what they can change. Use ONLY when the user explicitly invokes `/auto-enrich:configure-auto-enrich` or asks to set up / configure / inspect / troubleshoot auto-enrich. Do NOT auto-trigger from generic mentions of GitHub, GitLab, Jira, Sentry, or "context enrichment".
+name: configure
+description: Explain the unfurl-context plugin to the user and show them how it's currently configured + what they can change. Use ONLY when the user explicitly invokes `/unfurl-context:configure` or asks to set up / configure / inspect / troubleshoot unfurl-context. Do NOT auto-trigger from generic mentions of GitHub, GitLab, Jira, Sentry, or "context enrichment".
 user-invocable: true
 disable-model-invocation: true
 ---
 
-# auto-enrich: explain + configure
+# unfurl-context: explain + configure
 
-User-invoked only. Don't run as a side effect of unrelated work. If the user mentions Jira / GitHub / GitLab / Sentry without asking to configure auto-enrich, ignore this skill.
+User-invoked only. Don't run as a side effect of unrelated work. If the user mentions Jira / GitHub / GitLab / Sentry without asking to configure unfurl-context, ignore this skill.
 
 ## What this skill does
 
-Explain to the user what auto-enrich is, gather the current state in one pass (parallel CLI + auth + config checks), present a concise summary of "what's on, what's off, what you can change", and then act on whatever the user actually wants. **Don't walk through numbered steps. Don't ask the user permission between every check. Don't re-prompt for things you can detect.**
+Explain to the user what unfurl-context is, gather the current state in one pass (parallel CLI + auth + config checks), present a concise summary of "what's on, what's off, what you can change", and then act on whatever the user actually wants. **Don't walk through numbered steps. Don't ask the user permission between every check. Don't re-prompt for things you can detect.**
 
 The user already triggered the skill because they want information. Lead with the explanation and the current state, not with questions.
 
@@ -39,7 +39,7 @@ The checks:
 - `command -v acli && acli jira workitem search --jql 'assignee = currentUser()' --limit 1 2>&1 | head -3`
 - `command -v jira && jira me 2>&1 | head -3`
 - `command -v sentry && sentry org list --json 2>&1 | head -3`
-- `cat "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || cat "$HOME/.claude/auto-enrich.json" 2>/dev/null || echo "(no config file - defaults apply)"`
+- `cat "${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/config.json" 2>/dev/null || cat "$HOME/.claude/unfurl-context.json" 2>/dev/null || echo "(no config file - defaults apply)"`
 
 Treat "command not found" / non-zero exit as "not installed/authed" and move on; do not block on a missing CLI.
 
@@ -67,7 +67,7 @@ End with a single open question like: **"Anything you want to change, or are the
 
 Only edit the config file when the user names a specific change. Rules:
 
-- Resolve the path from `$CLAUDE_PLUGIN_DATA/config.json`, falling back to `~/.claude/auto-enrich.json` only if the env var is unset. Inside Claude Code the env var is set, so prefer that path. (Note: the per-plugin data dir is typically `~/.claude/plugins/data/auto-enrich-<source>/` - resolve it via the env var rather than hardcoding.)
+- Resolve the path from `$CLAUDE_PLUGIN_DATA/config.json`, falling back to `~/.claude/unfurl-context.json` only if the env var is unset. Inside Claude Code the env var is set, so prefer that path. (Note: the per-plugin data dir is typically `~/.claude/plugins/data/unfurl-context-<source>/` - resolve it via the env var rather than hardcoding.)
 - Show the diff (current file vs proposed file) before writing.
 - Use `mkdir -p` for the parent dir if missing.
 - Only write `{ "enabled": false }` for providers the user explicitly turned off. Leave defaults implicit - don't write `"enabled": true` everywhere.
@@ -94,25 +94,25 @@ The config schema, for reference:
 
 Defaults when keys are missing: every provider on, `jira.cli` = `"acli"`, no trusted projects.
 
-**Per-project overrides**: dropping a config at `<projectRoot>/.claude/auto-enrich.json` overrides the global config when working inside that repo. Useful for "disable Jira just in this repo" or "use jira-cli here, acli everywhere else". Merge granularity is one level inside `providers.<name>` - a project file with `{ "providers": { "jira": { "enabled": false } } }` does NOT wipe out the global `cli` setting; both keys coexist with project values winning on overlap. **`trustedProjects` is silently ignored when set in a project file** - a repo cannot grant itself custom-provider execution trust. When a user asks for a per-repo change, prefer writing the project file over editing the global one.
+**Per-project overrides**: dropping a config at `<projectRoot>/.claude/unfurl-context.json` overrides the global config when working inside that repo. Useful for "disable Jira just in this repo" or "use jira-cli here, acli everywhere else". Merge granularity is one level inside `providers.<name>` - a project file with `{ "providers": { "jira": { "enabled": false } } }` does NOT wipe out the global `cli` setting; both keys coexist with project values winning on overlap. **`trustedProjects` is silently ignored when set in a project file** - a repo cannot grant itself custom-provider execution trust. When a user asks for a per-repo change, prefer writing the project file over editing the global one.
 
 ### 5. Custom providers (only if the user asks)
 
 If the user says they want to add support for something not built-in (Linear, Shortcut, Asana, an internal tracker, etc.):
 
 1. Point them at `custom-provider-example.mjs` next to this SKILL.md - a runnable, well-commented Linear-issue example covering every contract field (`apiVersion`, `name`, `prepare`, `detect`, `fetch`, `summarize`, config reading, code-range filtering, error handling).
-2. Have them copy it to `~/.claude/auto-enrich/providers/<name>.provider.mjs`. The `.provider.mjs` suffix is required - other files in that directory are ignored silently.
+2. Have them copy it to `~/.claude/unfurl-context/providers/<name>.provider.mjs`. The `.provider.mjs` suffix is required - other files in that directory are ignored silently.
 3. Explain that they need to **start a new Claude Code session** for the new provider to take effect (`/exit` then `claude` again). `/reload-plugins` does NOT re-run `SessionStart`, so it won't pick up new or edited provider files.
 4. After restart, `cat $CLAUDE_PLUGIN_DATA/discovery.json` to confirm validation passed and the provider is listed.
-5. **Mention upstream as an option, once**: if the tracker is a public product others might use (Linear, Shortcut, Bitbucket, Asana, etc. - GitHub, GitLab, Jira, and Sentry are already built in), you can note that <https://github.com/zhebil/claude-code-plugins> takes PRs for new built-ins, and that the contract + test patterns to follow live in `plugins/auto-enrich/docs/custom-providers.md` and `plugins/auto-enrich/test/`. Phrase it as a possibility, not a recommendation - say it once and drop it. Don't characterize where the provider "belongs"; the user knows their own situation. Skip this entirely for clearly internal/proprietary trackers.
+5. **Mention upstream as an option, once**: if the tracker is a public product others might use (Linear, Shortcut, Bitbucket, Asana, etc. - GitHub, GitLab, Jira, and Sentry are already built in), you can note that <https://github.com/zhebil/claude-code-plugins> takes PRs for new built-ins, and that the contract + test patterns to follow live in `plugins/unfurl-context/docs/custom-providers.md` and `plugins/unfurl-context/test/`. Phrase it as a possibility, not a recommendation - say it once and drop it. Don't characterize where the provider "belongs"; the user knows their own situation. Skip this entirely for clearly internal/proprietary trackers.
 
-For the full contract spec (validation rules, lifecycle, EnrichmentContext fields, replacing a built-in), point at `plugins/auto-enrich/docs/custom-providers.md`.
+For the full contract spec (validation rules, lifecycle, EnrichmentContext fields, replacing a built-in), point at `plugins/unfurl-context/docs/custom-providers.md`.
 
 ### 6. Project-level providers (only if the user asks, and only with a warning)
 
 This is security-sensitive. Don't bring it up unprompted. If the user asks about it:
 
-> Adding a path to `trustedProjects` grants that repository execute-on-session-start privileges. Every `*.provider.mjs` checked into `<repo>/.claude/auto-enrich/providers/` - including any added by future commits or merged PRs - will be `import()`-ed in the hook's Node process, with access to your working tree, env, and any tokens `gh` / `glab` / `acli` / `sentry` can reach. **Trust only repos whose contributor list is fully under your control.**
+> Adding a path to `trustedProjects` grants that repository execute-on-session-start privileges. Every `*.provider.mjs` checked into `<repo>/.claude/unfurl-context/providers/` - including any added by future commits or merged PRs - will be `import()`-ed in the hook's Node process, with access to your working tree, env, and any tokens `gh` / `glab` / `acli` / `sentry` can reach. **Trust only repos whose contributor list is fully under your control.**
 
 If they still want it, add the absolute project path to `trustedProjects` in the **global** config. Match is exact - no glob, no prefix walk. An in-repo `config.json` cannot grant itself trust. Resolution order: built-ins > global custom > project custom; name collisions are rejected with a stderr warning.
 
@@ -130,5 +130,5 @@ These are the failure modes that came up in the previous version of this skill -
 ## Notes for future invocations
 
 - This skill is idempotent. The user can re-run it any time to inspect or change settings; nothing here is destructive without explicit confirmation.
-- Don't edit `settings.json`, `hooks.json`, or any plugin source code from this skill. Scope is: explanation, install/auth checks, the `auto-enrich` config file, and (optionally) helping drop a provider file.
-- Debugging hooks the user might want: `cat $CLAUDE_PLUGIN_DATA/discovery.json` (which custom providers loaded), `cat $CLAUDE_PLUGIN_DATA/seen.json` (per-session dedup cache + post-compact stash), and stderr `auto-enrich:` lines (validation/runtime warnings).
+- Don't edit `settings.json`, `hooks.json`, or any plugin source code from this skill. Scope is: explanation, install/auth checks, the `unfurl-context` config file, and (optionally) helping drop a provider file.
+- Debugging hooks the user might want: `cat $CLAUDE_PLUGIN_DATA/discovery.json` (which custom providers loaded), `cat $CLAUDE_PLUGIN_DATA/seen.json` (per-session dedup cache + post-compact stash), and stderr `unfurl-context:` lines (validation/runtime warnings).

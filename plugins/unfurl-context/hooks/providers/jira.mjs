@@ -188,7 +188,7 @@ function pickBackendName(ctx) {
   if (typeof requested !== "string" || !requested) return DEFAULT_BACKEND;
   if (!backends[requested]) {
     process.stderr.write(
-      `auto-enrich: unknown jira cli "${requested}"; falling back to ${DEFAULT_BACKEND}\n`,
+      `unfurl-context: unknown jira cli "${requested}"; falling back to ${DEFAULT_BACKEND}\n`,
     );
     return DEFAULT_BACKEND;
   }

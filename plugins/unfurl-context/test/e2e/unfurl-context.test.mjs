@@ -12,7 +12,7 @@ async function writeConfig(dir, payload) {
 
 async function writeProjectConfig(projectRoot, payload) {
   await mkdir(join(projectRoot, ".claude"), { recursive: true });
-  await writeFile(join(projectRoot, ".claude", "auto-enrich.json"), JSON.stringify(payload));
+  await writeFile(join(projectRoot, ".claude", "unfurl-context.json"), JSON.stringify(payload));
 }
 
 async function writeManifest(dir, paths) {
@@ -34,14 +34,14 @@ async function writeManifestEntries(dir, entries) {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const HOOK_PATH = resolve(HERE, "../../hooks/auto-enrich.mjs");
+const HOOK_PATH = resolve(HERE, "../../hooks/unfurl-context.mjs");
 
 let stubBinDir;
 let cacheDir;
 
 beforeEach(async () => {
-  stubBinDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-bin-"));
-  cacheDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-cache-"));
+  stubBinDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-bin-"));
+  cacheDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-cache-"));
 });
 
 afterEach(async () => {
@@ -92,7 +92,7 @@ function runHook(payload) {
   });
 }
 
-describe("auto-enrich hook (e2e)", () => {
+describe("unfurl-context hook (e2e)", () => {
   it("enriches a GitHub issue URL via stubbed gh", async () => {
     await writeStub(
       "gh",
@@ -117,11 +117,11 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: gh me\/proj#3/m);
+    assert.match(stderr, /^Unfurled: gh me\/proj#3/m);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.continue, true);
     assert.equal(parsed.suppressOutput, false);
-    assert.equal(parsed.systemMessage, "Auto-enriched: gh me/proj#3");
+    assert.equal(parsed.systemMessage, "Unfurled: gh me/proj#3");
     assert.equal(parsed.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.match(parsed.hookSpecificOutput.additionalContext, /Issue me\/proj#3: Hello/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /issue body/);
@@ -151,9 +151,9 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: jira PROJ-1/m);
+    assert.match(stderr, /^Unfurled: jira PROJ-1/m);
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.systemMessage, "Auto-enriched: jira PROJ-1");
+    assert.equal(parsed.systemMessage, "Unfurled: jira PROJ-1");
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Assignee: Alice/);
   });
@@ -187,7 +187,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: sentry 9/m);
+    assert.match(stderr, /^Unfurled: sentry 9/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Sentry issue 9: Boom/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- environment: prod/);
@@ -249,7 +249,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: gh me\/proj#5/m);
+    assert.match(stderr, /^Unfurled: gh me\/proj#5/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /me\/proj#5: Fix it/);
   });
@@ -365,7 +365,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: gh me\/proj#3$/m);
+    assert.match(stderr, /^Unfurled: gh me\/proj#3$/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Typed/);
     assert.doesNotMatch(parsed.hookSpecificOutput.additionalContext, /Injected/);
@@ -426,11 +426,11 @@ esac
     const parsed = JSON.parse(first.stdout);
     const context = parsed.hookSpecificOutput.additionalContext;
     assert.ok(context.length <= 10_000, `context is ${context.length} chars`);
-    assert.equal(parsed.systemMessage, "Auto-enriched: file me/proj:a.md, file me/proj:b.md");
+    assert.equal(parsed.systemMessage, "Unfurled: file me/proj:a.md, file me/proj:b.md");
     assert.match(context, /block truncated to fit the hook context limit\)\n<\/external_content>$/);
 
     const second = await runHook({ session_id: "e2e-big-2", cwd: process.cwd(), prompt });
-    assert.equal(JSON.parse(second.stdout).systemMessage, "Auto-enriched: file me/proj:c.md");
+    assert.equal(JSON.parse(second.stdout).systemMessage, "Unfurled: file me/proj:c.md");
   });
 
   it("skips already-seen ids on a second invocation in the same session", async () => {
@@ -505,7 +505,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: repo me\/proj/m);
+    assert.match(stderr, /^Unfurled: repo me\/proj/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Repo me\/proj: demo/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Language: Go/);
@@ -540,7 +540,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: file me\/proj:src\/x\.py#L1-L2/m);
+    assert.match(stderr, /^Unfurled: file me\/proj:src\/x\.py#L1-L2/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /File me\/proj@main - src\/x\.py - lines 1-2/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /1: def hello\(\):/);
@@ -619,7 +619,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /Auto-enriched: .*gh me\/proj#3.*jira PROJ-1|Auto-enriched: .*jira PROJ-1.*gh me\/proj#3/);
+    assert.match(stderr, /Unfurled: .*gh me\/proj#3.*jira PROJ-1|Unfurled: .*jira PROJ-1.*gh me\/proj#3/);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Issue me\/proj#3: Bug/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
@@ -651,7 +651,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: jira PROJ-1/m);
+    assert.match(stderr, /^Unfurled: jira PROJ-1/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Type: Bug/);
@@ -706,7 +706,7 @@ esac
   });
 
   it("loads a custom provider listed in the discovery manifest", async () => {
-    const customDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-custom-"));
+    const customDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-custom-"));
     const providerPath = join(customDir, "linear.provider.mjs");
     await writeFile(
       providerPath,
@@ -742,13 +742,13 @@ esac
     await rm(customDir, { recursive: true, force: true });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: linear LIN-42/m);
+    assert.match(stderr, /^Unfurled: linear LIN-42/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Linear LIN-42: Custom provider works/);
   });
 
   it("ignores a manifest entry that fails the runtime contract check", async () => {
-    const customDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-broken-"));
+    const customDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-broken-"));
     const providerPath = join(customDir, "broken.provider.mjs");
     await writeFile(
       providerPath,
@@ -769,7 +769,7 @@ esac
   });
 
   it("loads a project-source provider when the cwd is on the trust list", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-trusted-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-trusted-"));
     const providerPath = join(projectDir, "team.provider.mjs");
     await writeFile(
       providerPath,
@@ -804,13 +804,13 @@ esac
     await rm(projectDir, { recursive: true, force: true });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: team TEAM-7/m);
+    assert.match(stderr, /^Unfurled: team TEAM-7/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Team TEAM-7: project-trusted/);
   });
 
   it("ignores a project-source provider when the cwd is NOT trusted", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-untrusted-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-untrusted-"));
     const providerPath = join(projectDir, "team.provider.mjs");
     await writeFile(
       providerPath,
@@ -848,7 +848,7 @@ esac
   });
 
   it("project-local config disables a globally-enabled provider", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projcfg-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-projcfg-"));
     await writeStub("acli", `echo "should not be called" >&2; exit 99`);
     // Global config: jira explicitly enabled.
     await writeConfig(cacheDir, { providers: { jira: { enabled: true } } });
@@ -869,7 +869,7 @@ esac
   });
 
   it("project-local config can switch jira backend without disabling", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projcli-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-projcli-"));
     await writeStub("acli", `echo "should not be called" >&2; exit 99`);
     await writeStub(
       "jira",
@@ -899,14 +899,14 @@ esac
     await rm(projectDir, { recursive: true, force: true });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: jira PROJ-1/m);
+    assert.match(stderr, /^Unfurled: jira PROJ-1/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Jira PROJ-1: Title/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Type: Bug/);
   });
 
   it("project-local config CANNOT grant trust to itself (trustedProjects ignored)", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-e2e-projtrust-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-e2e-projtrust-"));
     const providerPath = join(projectDir, "team.provider.mjs");
     await writeFile(
       providerPath,
@@ -1015,7 +1015,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: glab group\/proj#3/m);
+    assert.match(stderr, /^Unfurled: glab group\/proj#3/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Issue group\/proj#3: Bug/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Author: alice/);
@@ -1047,7 +1047,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: glab group\/proj!9/m);
+    assert.match(stderr, /^Unfurled: glab group\/proj!9/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /MR group\/proj!9: Add feature/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Branch: feat\/x -> main/);
@@ -1081,7 +1081,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: glab-repo me\/proj/m);
+    assert.match(stderr, /^Unfurled: glab-repo me\/proj/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /Project me\/proj: demo/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /- Default branch: main/);
@@ -1117,7 +1117,7 @@ esac
     });
 
     assert.equal(code, 0);
-    assert.match(stderr, /^Auto-enriched: glab-file me\/proj:src\/x\.py#L1-L2/m);
+    assert.match(stderr, /^Unfurled: glab-file me\/proj:src\/x\.py#L1-L2/m);
     const parsed = JSON.parse(stdout);
     assert.match(parsed.hookSpecificOutput.additionalContext, /File me\/proj@main - src\/x\.py - lines 1-2/);
     assert.match(parsed.hookSpecificOutput.additionalContext, /1: def hello\(\):/);

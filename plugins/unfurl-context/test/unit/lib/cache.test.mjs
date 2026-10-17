@@ -14,7 +14,7 @@ let tempDir;
 const originalDataDir = process.env.CLAUDE_PLUGIN_DATA;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "auto-enrich-cache-test-"));
+  tempDir = await mkdtemp(join(tmpdir(), "unfurl-context-cache-test-"));
   process.env.CLAUDE_PLUGIN_DATA = tempDir;
 });
 

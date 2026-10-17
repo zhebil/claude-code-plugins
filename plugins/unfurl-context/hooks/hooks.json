@@ -1,5 +1,5 @@
 {
-  "description": "Auto-enrich prompts with Jira, GitHub, and Sentry context.",
+  "description": "Unfurl Jira, GitHub, GitLab, and Sentry references in prompts into context.",
   "hooks": {
     "SessionStart": [
       {
@@ -27,9 +27,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/auto-enrich.mjs",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/unfurl-context.mjs",
             "timeout": 90,
-            "statusMessage": "Auto-enriching referenced tickets and links"
+            "statusMessage": "Unfurling referenced tickets and links"
           }
         ]
       }

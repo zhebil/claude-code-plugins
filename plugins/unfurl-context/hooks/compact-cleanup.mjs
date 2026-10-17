@@ -32,7 +32,7 @@ function readStdin() {
 function formatReferences(items) {
   const lines = items.map((it) => `- \`${it.id}\` - ${it.summary}`);
   return [
-    "### Previously auto-enriched references",
+    "### Previously unfurled references",
     "",
     "These items were attached to the conversation before it was compacted. The full content is no longer in context. If a follow-up needs one of them, mention it again to re-attach, or fetch it directly with the appropriate tool.",
     "",

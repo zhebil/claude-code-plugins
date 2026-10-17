@@ -7,16 +7,17 @@
   },
   "plugins": [
     {
-      "name": "auto-enrich",
-      "description": "Auto-enrich Claude Code prompts with Jira, GitHub, GitLab, and Sentry context.",
+      "name": "unfurl-context",
+      "description": "Unfurls Jira, GitHub, GitLab, and Sentry links in your prompt into context Claude can read.",
       "author": {
         "name": "Zhebil"
       },
-      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/auto-enrich",
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/unfurl-context",
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
       "tags": [
+        "unfurl",
         "jira",
         "github",
         "gitlab",
@@ -25,7 +26,7 @@
         "context",
         "claude-code-plugin"
       ],
-      "source": "./plugins/auto-enrich"
+      "source": "./plugins/unfurl-context"
     },
     {
       "name": "mermaid-view",

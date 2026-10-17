@@ -20,7 +20,7 @@ let tempDir;
 const originalDataDir = process.env.CLAUDE_PLUGIN_DATA;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "auto-enrich-config-test-"));
+  tempDir = await mkdtemp(join(tmpdir(), "unfurl-context-config-test-"));
   process.env.CLAUDE_PLUGIN_DATA = tempDir;
 });
 
@@ -35,10 +35,15 @@ describe("getConfigPath", () => {
     assert.equal(getConfigPath(), join(tempDir, "config.json"));
   });
 
-  it("falls back to ~/.claude/auto-enrich.json without the env var", () => {
+  it("falls back to ~/.claude/unfurl-context.json without the env var", () => {
     delete process.env.CLAUDE_PLUGIN_DATA;
-    const expected = join(process.env.HOME || process.cwd(), ".claude", "auto-enrich.json");
-    assert.equal(getConfigPath(), expected);
+    const originalHome = process.env.HOME;
+    process.env.HOME = tempDir;
+    try {
+      assert.equal(getConfigPath(), join(tempDir, ".claude", "unfurl-context.json"));
+    } finally {
+      process.env.HOME = originalHome;
+    }
   });
 });
 
@@ -159,8 +164,8 @@ describe("isProjectTrusted", () => {
 });
 
 describe("getProjectConfigPath", () => {
-  it("returns <cwd>/.claude/auto-enrich.json for a real path", () => {
-    assert.equal(getProjectConfigPath("/tmp/proj"), join("/tmp/proj", ".claude", "auto-enrich.json"));
+  it("returns <cwd>/.claude/unfurl-context.json for a real path", () => {
+    assert.equal(getProjectConfigPath("/tmp/proj"), join("/tmp/proj", ".claude", "unfurl-context.json"));
   });
 
   it("returns null for empty / non-string cwd", () => {
@@ -172,14 +177,14 @@ describe("getProjectConfigPath", () => {
   it("resolves relative paths so the result is absolute", () => {
     const resolved = getProjectConfigPath(".");
     assert.ok(resolved && resolved.startsWith("/"));
-    assert.ok(resolved.endsWith(join(".claude", "auto-enrich.json")));
+    assert.ok(resolved.endsWith(join(".claude", "unfurl-context.json")));
   });
 });
 
 describe("loadProjectConfig", () => {
   let projectDir;
   beforeEach(async () => {
-    projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-projcfg-"));
+    projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-projcfg-"));
     await mkdir(join(projectDir, ".claude"), { recursive: true });
   });
   afterEach(async () => {
@@ -192,14 +197,14 @@ describe("loadProjectConfig", () => {
   });
 
   it("returns {} on invalid JSON", async () => {
-    await writeFile(join(projectDir, ".claude", "auto-enrich.json"), "not json");
+    await writeFile(join(projectDir, ".claude", "unfurl-context.json"), "not json");
     const cfg = await loadProjectConfig(projectDir);
     assert.deepEqual(cfg, {});
   });
 
   it("loads a well-formed project config", async () => {
     const payload = { providers: { jira: { enabled: false } } };
-    await writeFile(join(projectDir, ".claude", "auto-enrich.json"), JSON.stringify(payload));
+    await writeFile(join(projectDir, ".claude", "unfurl-context.json"), JSON.stringify(payload));
     const cfg = await loadProjectConfig(projectDir);
     assert.deepEqual(cfg, payload);
   });
@@ -209,7 +214,7 @@ describe("loadProjectConfig", () => {
       providers: { jira: { enabled: false } },
       trustedProjects: ["/anywhere"],
     };
-    await writeFile(join(projectDir, ".claude", "auto-enrich.json"), JSON.stringify(payload));
+    await writeFile(join(projectDir, ".claude", "unfurl-context.json"), JSON.stringify(payload));
     const cfg = await loadProjectConfig(projectDir);
     assert.deepEqual(cfg, { providers: { jira: { enabled: false } } });
     assert.equal("trustedProjects" in cfg, false);
@@ -275,7 +280,7 @@ describe("mergeConfigs", () => {
 describe("loadEffectiveConfig", () => {
   let projectDir;
   beforeEach(async () => {
-    projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-effcfg-"));
+    projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-effcfg-"));
     await mkdir(join(projectDir, ".claude"), { recursive: true });
   });
   afterEach(async () => {
@@ -288,7 +293,7 @@ describe("loadEffectiveConfig", () => {
       JSON.stringify({ providers: { jira: { enabled: true, cli: "acli" } } }),
     );
     await writeFile(
-      join(projectDir, ".claude", "auto-enrich.json"),
+      join(projectDir, ".claude", "unfurl-context.json"),
       JSON.stringify({ providers: { jira: { enabled: false } } }),
     );
     const { global, project, effective } = await loadEffectiveConfig(projectDir);
@@ -310,7 +315,7 @@ describe("loadEffectiveConfig", () => {
   it("project trustedProjects never reaches the merged config", async () => {
     await writeFile(join(tempDir, "config.json"), JSON.stringify({ trustedProjects: ["/global"] }));
     await writeFile(
-      join(projectDir, ".claude", "auto-enrich.json"),
+      join(projectDir, ".claude", "unfurl-context.json"),
       JSON.stringify({ trustedProjects: ["/from-project"], providers: { jira: { enabled: false } } }),
     );
     const { effective } = await loadEffectiveConfig(projectDir);

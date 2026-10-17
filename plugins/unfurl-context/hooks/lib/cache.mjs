@@ -29,13 +29,13 @@ const MAX_SESSION_ENTRIES = 200;
 
 /**
  * Resolve the cache file path. Honors `CLAUDE_PLUGIN_DATA` if set (Claude
- * Code's per-plugin data dir); otherwise falls back to `~/.cache/claude-auto-enrich`.
+ * Code's per-plugin data dir); otherwise falls back to `~/.cache/claude-unfurl-context`.
  *
  * @returns {string} Absolute path to the JSON cache file.
  */
 function getCachePath() {
   const base = process.env.CLAUDE_PLUGIN_DATA
-    || join(process.env.HOME || process.cwd(), ".cache", "claude-auto-enrich");
+    || join(process.env.HOME || process.cwd(), ".cache", "claude-unfurl-context");
   return join(base, "seen.json");
 }
 
@@ -51,7 +51,7 @@ async function readCache() {
     raw = await readFile(getCachePath(), "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      process.stderr.write(`auto-enrich: cache read failed (${error?.code ?? error})\n`);
+      process.stderr.write(`unfurl-context: cache read failed (${error?.code ?? error})\n`);
     }
     return { sessions: {}, stashed: {} };
   }

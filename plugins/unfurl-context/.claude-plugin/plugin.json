@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "unfurl-context",
+  "version": "2.0.0",
+  "description": "Unfurls Jira tickets, GitHub PRs/issues/repos/files, GitLab issues/MRs/projects/files, and Sentry issues referenced in your prompt into context Claude can read.",
+  "author": {
+    "name": "Zhebil"
+  },
+  "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/unfurl-context",
+  "repository": "https://github.com/zhebil/claude-code-plugins",
+  "license": "MIT",
+  "keywords": ["unfurl", "hooks", "jira", "github", "gitlab", "sentry", "context"]
+}

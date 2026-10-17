@@ -10,7 +10,7 @@ import { safeJsonParse } from "./json.mjs";
  */
 
 /**
- * @typedef {Object} AutoEnrichConfig
+ * @typedef {Object} UnfurlConfig
  * @property {Object<string, ProviderConfig>} [providers] Per-provider
  *   settings keyed by `provider.name`.
  * @property {string[]} [trustedProjects] Absolute project-root paths the
@@ -29,7 +29,7 @@ export function getConfigPath() {
   if (process.env.CLAUDE_PLUGIN_DATA) {
     return join(process.env.CLAUDE_PLUGIN_DATA, "config.json");
   }
-  return join(process.env.HOME || process.cwd(), ".claude", "auto-enrich.json");
+  return join(process.env.HOME || process.cwd(), ".claude", "unfurl-context.json");
 }
 
 /**
@@ -42,7 +42,7 @@ export function getConfigPath() {
  * doesn't silently hide the user's intent. The hook never blocks the
  * prompt over a bad config.
  *
- * @returns {Promise<AutoEnrichConfig>}
+ * @returns {Promise<UnfurlConfig>}
  */
 export async function loadConfig() {
   let raw;
@@ -50,7 +50,7 @@ export async function loadConfig() {
     raw = await readFile(getConfigPath(), "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      process.stderr.write(`auto-enrich: config read failed (${error?.code ?? error}); using defaults\n`);
+      process.stderr.write(`unfurl-context: config read failed (${error?.code ?? error}); using defaults\n`);
     }
     return {};
   }
@@ -63,7 +63,7 @@ export async function loadConfig() {
  * Whether a provider is enabled per config. Default is `true` so a
  * fresh install enriches everything.
  *
- * @param {AutoEnrichConfig} config
+ * @param {UnfurlConfig} config
  * @param {string} providerName
  * @returns {boolean}
  */
@@ -78,7 +78,7 @@ export function isProviderEnabled(config, providerName) {
  * empty). Lets providers read their own keys without each one
  * re-implementing the lookup.
  *
- * @param {AutoEnrichConfig} config
+ * @param {UnfurlConfig} config
  * @param {string} providerName
  * @returns {ProviderConfig}
  */
@@ -94,7 +94,7 @@ export function getProviderConfig(config, providerName) {
  * the remainder is returned as-is (no path resolution yet, callers do
  * exact-match against a resolved cwd).
  *
- * @param {AutoEnrichConfig} config
+ * @param {UnfurlConfig} config
  * @returns {string[]}
  */
 export function getTrustedProjects(config) {
@@ -108,7 +108,7 @@ export function getTrustedProjects(config) {
  * Match is exact against the resolved cwd - no prefix walk, no glob.
  * Trusting `/path/to/repo` does NOT imply trust for `/path/to/repo/sub`.
  *
- * @param {AutoEnrichConfig} config
+ * @param {UnfurlConfig} config
  * @param {string} cwd
  * @returns {boolean}
  */
@@ -123,15 +123,15 @@ export function isProjectTrusted(config, cwd) {
 
 /**
  * Resolve the project-local config path. Project config sits at
- * `<cwd>/.claude/auto-enrich.json`, alongside the existing
- * `<cwd>/.claude/auto-enrich/providers/` convention.
+ * `<cwd>/.claude/unfurl-context.json`, alongside the existing
+ * `<cwd>/.claude/unfurl-context/providers/` convention.
  *
  * @param {string} cwd
  * @returns {string|null} Absolute path, or null if cwd is unusable.
  */
 export function getProjectConfigPath(cwd) {
   if (typeof cwd !== "string" || !cwd) return null;
-  return join(resolve(cwd), ".claude", "auto-enrich.json");
+  return join(resolve(cwd), ".claude", "unfurl-context.json");
 }
 
 /**
@@ -147,7 +147,7 @@ export function getProjectConfigPath(cwd) {
  * was ignored rather than honored.
  *
  * @param {string} cwd
- * @returns {Promise<AutoEnrichConfig>}
+ * @returns {Promise<UnfurlConfig>}
  */
 export async function loadProjectConfig(cwd) {
   const path = getProjectConfigPath(cwd);
@@ -157,14 +157,14 @@ export async function loadProjectConfig(cwd) {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      process.stderr.write(`auto-enrich: project config read failed (${error?.code ?? error}); ignoring\n`);
+      process.stderr.write(`unfurl-context: project config read failed (${error?.code ?? error}); ignoring\n`);
     }
     return {};
   }
   const parsed = safeJsonParse(raw);
   if (!parsed || typeof parsed !== "object") return {};
   if (Array.isArray(parsed.trustedProjects) && parsed.trustedProjects.length > 0) {
-    process.stderr.write("auto-enrich: project config sets `trustedProjects`; ignored (trust must be granted from the global config)\n");
+    process.stderr.write("unfurl-context: project config sets `trustedProjects`; ignored (trust must be granted from the global config)\n");
   }
   const { trustedProjects: _ignored, ...rest } = parsed;
   return rest;
@@ -185,9 +185,9 @@ export async function loadProjectConfig(cwd) {
  *
  * Either argument may be null/undefined - treat as `{}`.
  *
- * @param {AutoEnrichConfig|null|undefined} global
- * @param {AutoEnrichConfig|null|undefined} project
- * @returns {AutoEnrichConfig}
+ * @param {UnfurlConfig|null|undefined} global
+ * @param {UnfurlConfig|null|undefined} project
+ * @returns {UnfurlConfig}
  */
 export function mergeConfigs(global, project) {
   const g = global && typeof global === "object" ? global : {};
@@ -222,7 +222,7 @@ export function mergeConfigs(global, project) {
  * `isProjectTrusted`, which must NEVER consult the project config).
  *
  * @param {string} cwd
- * @returns {Promise<{ global: AutoEnrichConfig, project: AutoEnrichConfig, effective: AutoEnrichConfig }>}
+ * @returns {Promise<{ global: UnfurlConfig, project: UnfurlConfig, effective: UnfurlConfig }>}
  */
 export async function loadEffectiveConfig(cwd) {
   const [global, project] = await Promise.all([loadConfig(), loadProjectConfig(cwd)]);

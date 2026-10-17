@@ -18,8 +18,8 @@ let dataDir;
 const originalDataDir = process.env.CLAUDE_PLUGIN_DATA;
 
 beforeEach(async () => {
-  scanDir = await mkdtemp(join(tmpdir(), "auto-enrich-discover-"));
-  dataDir = await mkdtemp(join(tmpdir(), "auto-enrich-data-"));
+  scanDir = await mkdtemp(join(tmpdir(), "unfurl-context-discover-"));
+  dataDir = await mkdtemp(join(tmpdir(), "unfurl-context-data-"));
   process.env.CLAUDE_PLUGIN_DATA = dataDir;
 });
 
@@ -227,7 +227,7 @@ describe("discoverProviders", () => {
   });
 
   it("scans project dir when provided, after global", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-project-"));
     try {
       await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("g"));
       await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("p"));
@@ -248,7 +248,7 @@ describe("discoverProviders", () => {
   });
 
   it("project entry is rejected when name collides with global", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-project-"));
     try {
       await writeFile(join(scanDir, "g.provider.mjs"), validProviderSrc("dup"));
       await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("dup"));
@@ -267,7 +267,7 @@ describe("discoverProviders", () => {
   });
 
   it("project entry is rejected when name collides with built-in", async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), "auto-enrich-project-"));
+    const projectDir = await mkdtemp(join(tmpdir(), "unfurl-context-project-"));
     try {
       await writeFile(join(projectDir, "p.provider.mjs"), validProviderSrc("jira"));
       const { entries, warnings } = await discoverProviders({

@@ -1,4 +1,4 @@
-// Example custom provider for auto-enrich.
+// Example custom provider for unfurl-context.
 //
 // What this does: detects Linear issue references in the user's prompt
 // (URLs like `https://linear.app/myteam/issue/LIN-42` and bare keys like
@@ -6,8 +6,8 @@
 //
 // To use:
 //   1. Copy this file to one of:
-//        - ~/.claude/auto-enrich/providers/linear.provider.mjs        (always loaded)
-//        - <projectRoot>/.claude/auto-enrich/providers/linear.provider.mjs
+//        - ~/.claude/unfurl-context/providers/linear.provider.mjs        (always loaded)
+//        - <projectRoot>/.claude/unfurl-context/providers/linear.provider.mjs
 //          (loaded only when <projectRoot> is on `trustedProjects`)
 //      The `.provider.mjs` suffix is required - other filenames are ignored.
 //   2. Start a NEW Claude Code session (`/exit` then `claude`). `/reload-plugins`
@@ -19,7 +19,7 @@
 //   4. Verify load: `cat $CLAUDE_PLUGIN_DATA/discovery.json` should list this file.
 //
 // The full contract reference lives in:
-//   plugins/auto-enrich/docs/custom-providers.md
+//   plugins/unfurl-context/docs/custom-providers.md
 //
 // This file is annotated to explain *why* each piece exists - feel free to
 // strip the comments when you adapt it.
@@ -172,7 +172,7 @@ export default {
 
   // -------------------------------------------------------------------------
   // summarize(match) - PURE. Returns the short label for the visible
-  // `Auto-enriched: <a>, <b>, <c>` line on stderr. Keep it under ~40 chars.
+  // `Unfurled: <a>, <b>, <c>` line on stderr. Keep it under ~40 chars.
   // -------------------------------------------------------------------------
   summarize(match) {
     return `linear ${match.key}`;

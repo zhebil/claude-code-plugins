@@ -8,7 +8,7 @@ Open a GitHub issue for security concerns that do not expose secrets. If a repor
 
 ## Credentials
 
-`auto-enrich` does not store credentials. It uses existing CLI authentication for:
+`unfurl-context` does not store credentials. It uses existing CLI authentication for:
 
 - GitHub CLI (`gh`)
 - Atlassian CLI (`acli`)

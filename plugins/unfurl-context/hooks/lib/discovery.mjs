@@ -12,8 +12,8 @@ const FILE_SUFFIX = ".provider.mjs";
  * @typedef {Object} ManifestEntry
  * @property {string} path Absolute path, safe to `await import()`.
  * @property {ProviderSource} source Where it was discovered. `global`
- *   means `~/.claude/auto-enrich/providers/`; `project` means
- *   `<projectRoot>/.claude/auto-enrich/providers/` (only present for
+ *   means `~/.claude/unfurl-context/providers/`; `project` means
+ *   `<projectRoot>/.claude/unfurl-context/providers/` (only present for
  *   trusted projects - see `isProjectTrusted`).
  *
  * @typedef {Object} DiscoveryManifest
@@ -23,13 +23,13 @@ const FILE_SUFFIX = ".provider.mjs";
  */
 
 /**
- * Default global discovery directory: `~/.claude/auto-enrich/providers/`.
+ * Default global discovery directory: `~/.claude/unfurl-context/providers/`.
  *
  * @returns {string}
  */
 export function getDiscoveryDir() {
   const home = process.env.HOME || process.cwd();
-  return join(home, ".claude", "auto-enrich", "providers");
+  return join(home, ".claude", "unfurl-context", "providers");
 }
 
 /**
@@ -41,7 +41,7 @@ export function getDiscoveryDir() {
  * @returns {string}
  */
 export function getProjectDiscoveryDir(cwd) {
-  return join(cwd, ".claude", "auto-enrich", "providers");
+  return join(cwd, ".claude", "unfurl-context", "providers");
 }
 
 /**
@@ -51,7 +51,7 @@ export function getProjectDiscoveryDir(cwd) {
  */
 export function getManifestPath() {
   const base = process.env.CLAUDE_PLUGIN_DATA
-    || join(process.env.HOME || process.cwd(), ".cache", "claude-auto-enrich");
+    || join(process.env.HOME || process.cwd(), ".cache", "claude-unfurl-context");
   return join(base, "discovery.json");
 }
 
@@ -75,7 +75,7 @@ async function scanDir({ dir, seenNames }) {
     entries = await readdir(dir);
   } catch (error) {
     if (error?.code === "ENOENT") return { paths: [], warnings: [] };
-    return { paths: [], warnings: [`auto-enrich: cannot read ${dir} (${error?.code ?? error})`] };
+    return { paths: [], warnings: [`unfurl-context: cannot read ${dir} (${error?.code ?? error})`] };
   }
   const candidates = entries
     .filter((name) => name.endsWith(FILE_SUFFIX))
@@ -90,7 +90,7 @@ async function scanDir({ dir, seenNames }) {
       paths.push(path);
       seenNames.add(result.name);
     } else {
-      warnings.push(`auto-enrich: skipped ${path}: ${result.reason}`);
+      warnings.push(`unfurl-context: skipped ${path}: ${result.reason}`);
     }
   }
   return { paths, warnings };
@@ -247,7 +247,7 @@ export async function readManifest() {
     raw = await readFile(getManifestPath(), "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") {
-      process.stderr.write(`auto-enrich: discovery manifest unreadable (${error?.code ?? error})\n`);
+      process.stderr.write(`unfurl-context: discovery manifest unreadable (${error?.code ?? error})\n`);
     }
     return { loadedAt: 0, entries: [] };
   }
@@ -300,13 +300,13 @@ export async function loadCustomProviders(builtinNames, { allowProject = true } 
     try {
       mod = await import(pathToFileURL(path).href);
     } catch (error) {
-      process.stderr.write(`auto-enrich: failed to load ${path} (${error?.message ?? error})\n`);
+      process.stderr.write(`unfurl-context: failed to load ${path} (${error?.message ?? error})\n`);
       continue;
     }
     const provider = mod.default ?? mod.provider;
     const result = validateProviderObject(provider, taken);
     if (!result.ok) {
-      process.stderr.write(`auto-enrich: ${path} no longer satisfies provider contract; skipping\n`);
+      process.stderr.write(`unfurl-context: ${path} no longer satisfies provider contract; skipping\n`);
       continue;
     }
     taken.add(provider.name);

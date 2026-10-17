@@ -1,6 +1,6 @@
 # Custom providers
 
-This guide covers writing your own provider for `auto-enrich`: how
+This guide covers writing your own provider for `unfurl-context`: how
 discovery works, the full interface contract, and runnable examples.
 
 Built-in providers (GitHub, Jira, Sentry) are useful, but every team
@@ -12,13 +12,13 @@ budgeting, caching, and rendering.
 ## How discovery works
 
 1. **At session start**, the plugin's `SessionStart` hook
-   (`hooks/discover.mjs`) reads `~/.claude/auto-enrich/providers/`,
+   (`hooks/discover.mjs`) reads `~/.claude/unfurl-context/providers/`,
    scans for files matching `*.provider.mjs`, dynamic-imports each,
    and validates the export against the contract below.
 2. Validated paths are written to `$CLAUDE_PLUGIN_DATA/discovery.json`
    (a manifest of absolute file paths plus a timestamp).
 3. **On every `UserPromptSubmit`**, the orchestrator
-   (`hooks/auto-enrich.mjs`) reads the manifest, dynamic-imports each
+   (`hooks/unfurl-context.mjs`) reads the manifest, dynamic-imports each
    listed module, re-checks the contract as defense-in-depth, and
    appends the resolved providers to the built-in array before the
    config filter runs.
@@ -28,8 +28,8 @@ disable it via `config.json` and ship a custom one with a different
 name (see [Replacing a built-in](#replacing-a-built-in)).
 
 > **Note.** Discovery defaults to global only
-> (`~/.claude/auto-enrich/...`). Project-level providers
-> (`<projectRoot>/.claude/auto-enrich/...`) are also supported but are
+> (`~/.claude/unfurl-context/...`). Project-level providers
+> (`<projectRoot>/.claude/unfurl-context/...`) are also supported but are
 > opt-in per project - see [Project-level providers](#project-level-providers)
 > below. The opt-in mechanism prevents arbitrary cloned repositories
 > from executing code inside the hook process.
@@ -46,7 +46,7 @@ name (see [Replacing a built-in](#replacing-a-built-in)).
 
 > **Warning:** Adding a path to `trustedProjects` is equivalent to
 > granting that repository execute-on-session-start privileges in your
-> Claude Code environment. Any `.claude/auto-enrich/providers/*.provider.mjs`
+> Claude Code environment. Any `.claude/unfurl-context/providers/*.provider.mjs`
 > checked in to that repo - including files added by future commits or
 > merged pull requests - will be dynamic-imported, and its top-level
 > code will run inside the hook's Node process with access to your
@@ -55,12 +55,12 @@ name (see [Replacing a built-in](#replacing-a-built-in)).
 > list is fully under your control.
 
 A project can ship its own providers under
-`<projectRoot>/.claude/auto-enrich/providers/*.provider.mjs`, but the
+`<projectRoot>/.claude/unfurl-context/providers/*.provider.mjs`, but the
 plugin loads them only when the project's absolute path is on the
 user's trust list in their **global** config:
 
 ```jsonc
-// $CLAUDE_PLUGIN_DATA/config.json (or ~/.claude/auto-enrich.json)
+// $CLAUDE_PLUGIN_DATA/config.json (or ~/.claude/unfurl-context.json)
 {
   "trustedProjects": [
     "/Users/me/work/some-repo",
@@ -94,8 +94,8 @@ you've consciously vouched for.
 
 ## File location and naming
 
-- Global directory: `~/.claude/auto-enrich/providers/` (always scanned)
-- Project directory: `<projectRoot>/.claude/auto-enrich/providers/`
+- Global directory: `~/.claude/unfurl-context/providers/` (always scanned)
+- Project directory: `<projectRoot>/.claude/unfurl-context/providers/`
   (scanned only when the cwd is on `trustedProjects` - see
   [Project-level providers](#project-level-providers))
 - Filename: `<anything>.provider.mjs` (the suffix is required)
@@ -267,7 +267,7 @@ Long-running paths can consult `ctx.budgetExceeded()` and bail early.
 ### `summarize(match) => string`
 
 Pure. Returns a short human-readable label that appears in the
-visible `Auto-enriched: <a>, <b>, <c>` line written to stderr.
+visible `Unfurled: <a>, <b>, <c>` line written to stderr.
 Keep it under ~40 chars.
 
 ```js
@@ -305,7 +305,7 @@ found, etc.), but those are also caught upstream.
 ### Reading user config
 
 Users configure the plugin via `$CLAUDE_PLUGIN_DATA/config.json` (or
-`~/.claude/auto-enrich.json` fallback). Your provider can declare
+`~/.claude/unfurl-context.json` fallback). Your provider can declare
 opt-in keys under its name:
 
 ```jsonc
@@ -359,7 +359,7 @@ match.
 A provider that detects the literal word `hello` and injects `world`:
 
 ```js
-// ~/.claude/auto-enrich/providers/hello.provider.mjs
+// ~/.claude/unfurl-context/providers/hello.provider.mjs
 const PATTERN = /\bhello\b/gi;
 
 export default {
@@ -474,7 +474,7 @@ built-in. Discovery rejects collisions explicitly.
 Validate the file at the CLI:
 
 ```bash
-node --check ~/.claude/auto-enrich/providers/hello.provider.mjs
+node --check ~/.claude/unfurl-context/providers/hello.provider.mjs
 ```
 
 Run discovery + the prompt hook against a temp data dir to see what
@@ -483,23 +483,23 @@ Claude would receive without polluting your real session cache:
 ```bash
 TMPDATA=$(mktemp -d)
 CLAUDE_PLUGIN_DATA="$TMPDATA" node \
-  ~/.claude/plugins/.../auto-enrich/hooks/discover.mjs
+  ~/.claude/plugins/.../unfurl-context/hooks/discover.mjs
 
 cat "$TMPDATA/discovery.json"
 
 printf '%s' '{"session_id":"smoke","hook_event_name":"UserPromptSubmit","cwd":"'$PWD'","user_prompt":"hello there"}' \
   | CLAUDE_PLUGIN_DATA="$TMPDATA" node \
-    ~/.claude/plugins/.../auto-enrich/hooks/auto-enrich.mjs
+    ~/.claude/plugins/.../unfurl-context/hooks/unfurl-context.mjs
 
 rm -rf "$TMPDATA"
 ```
 
-(Replace `~/.claude/plugins/.../auto-enrich` with the actual install
+(Replace `~/.claude/plugins/.../unfurl-context` with the actual install
 path, or run from the marketplace clone.)
 
 You can also write Node's built-in unit tests against your provider
 the same way the built-ins do - see
-`plugins/auto-enrich/test/unit/providers/*.test.mjs` for templates.
+`plugins/unfurl-context/test/unit/providers/*.test.mjs` for templates.
 
 ## Limitations
 
@@ -510,7 +510,7 @@ the same way the built-ins do - see
   closing and reopening the TUI (`/exit` then `claude`); `/reload-plugins`
   does not re-fire `SessionStart`.
 - **Project-level discovery is opt-in.** A repository's
-  `.claude/auto-enrich/providers/` is loaded only when the project's
+  `.claude/unfurl-context/providers/` is loaded only when the project's
   absolute path appears in `trustedProjects` in the user's global
   config. Cloned repos cannot trust themselves. See
   [Project-level providers](#project-level-providers).

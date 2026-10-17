@@ -30,9 +30,9 @@ function readStdin() {
 
 /**
  * SessionStart hook entrypoint. Scans the global discovery directory
- * (`~/.claude/auto-enrich/providers/`) plus, when the cwd is on the
+ * (`~/.claude/unfurl-context/providers/`) plus, when the cwd is on the
  * user's trust list, the project directory
- * (`<cwd>/.claude/auto-enrich/providers/`). Validated entries are
+ * (`<cwd>/.claude/unfurl-context/providers/`). Validated entries are
  * written to `$CLAUDE_PLUGIN_DATA/discovery.json` so UserPromptSubmit
  * can dynamic-import them without re-validating.
  *
@@ -62,7 +62,7 @@ async function main() {
     const parts = [];
     if (counts.global) parts.push(`${counts.global} global`);
     if (counts.project) parts.push(`${counts.project} project`);
-    process.stderr.write(`auto-enrich: loaded ${entries.length} custom provider(s) (${parts.join(", ")})\n`);
+    process.stderr.write(`unfurl-context: loaded ${entries.length} custom provider(s) (${parts.join(", ")})\n`);
   }
 }
 

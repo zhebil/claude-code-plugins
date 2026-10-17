@@ -4,9 +4,9 @@ Personal Claude Code plugin marketplace.
 
 ## Plugins
 
-### auto-enrich
+### unfurl-context
 
-Auto-enriches submitted prompts with compact context for referenced Jira tickets, GitHub PRs/issues/repos/files, and Sentry issues.
+Unfurls Jira tickets, GitHub PRs/issues/repos/files, GitLab issues/MRs/projects/files, and Sentry issues referenced in your prompt into compact context Claude can read, the way Slack unfurls a pasted link.
 
 It runs as a `UserPromptSubmit` hook and uses local CLIs only. No AI calls are made by the plugin itself.
 
@@ -21,7 +21,7 @@ claude plugin marketplace add zhebil/claude-code-plugins
 Install the plugin:
 
 ```bash
-claude plugin install auto-enrich@zhebil-tools
+claude plugin install unfurl-context@zhebil-tools
 ```
 
 Reload plugins or restart Claude Code:
@@ -34,7 +34,7 @@ Reload plugins or restart Claude Code:
 
 ```bash
 claude plugin marketplace update zhebil-tools
-claude plugin update auto-enrich@zhebil-tools
+claude plugin update unfurl-context@zhebil-tools
 ```
 
 Then run `/reload-plugins` or restart Claude Code.
@@ -45,15 +45,15 @@ Validate the marketplace and plugin:
 
 ```bash
 claude plugin validate .
-claude plugin validate plugins/auto-enrich
-node --check plugins/auto-enrich/hooks/auto-enrich.mjs
+claude plugin validate plugins/unfurl-context
+node --check plugins/unfurl-context/hooks/unfurl-context.mjs
 ```
 
 Test the hook directly:
 
 ```bash
 printf '%s' '{"session_id":"test","hook_event_name":"UserPromptSubmit","cwd":"'$PWD'","user_prompt":"look at https://github.com/anthropics/claude-code"}' \
-  | CLAUDE_PLUGIN_DATA="$(mktemp -d)" node plugins/auto-enrich/hooks/auto-enrich.mjs
+  | CLAUDE_PLUGIN_DATA="$(mktemp -d)" node plugins/unfurl-context/hooks/unfurl-context.mjs
 ```
 
 ## Marketplace
