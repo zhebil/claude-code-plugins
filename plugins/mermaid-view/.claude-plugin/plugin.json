@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mermaid-view",
-  "version": "0.1.0",
-  "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal.",
+  "version": "0.2.0",
+  "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal, laid out by ELK to fit its width.",
   "author": {
     "name": "Zhebil"
   },

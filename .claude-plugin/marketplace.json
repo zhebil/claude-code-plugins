@@ -30,7 +30,7 @@
     },
     {
       "name": "mermaid-view",
-      "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal.",
+      "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal, laid out by ELK to fit its width.",
       "author": {
         "name": "Zhebil"
       },

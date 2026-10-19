@@ -4,17 +4,29 @@ Claude Code mod that draws the Mermaid diagrams in Claude's replies as Unicode b
 
 It rewrites only what the terminal draws. Claude, the transcript and copied text still hold the original Mermaid. The Desktop app is left alone.
 
-A block stays as source when it fails to parse or when the drawing is wider than the terminal.
+## How a diagram is drawn
 
-Supported diagrams are the ones [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) can draw as text: flowchart, state, sequence, class and ER.
+Flowcharts and state diagrams are laid out by [ELK](https://eclipse.dev/elk/) and then drawn on a character grid. To fit the terminal, the mod tries the diagram's own direction first, then the other one (LR and TD), each time wrapping node labels at 24, 16 and 12 characters, and shows the first drawing that fits.
+
+ELK is too large to load inside a mod, so it runs as a `node` child process (`layout/cli.mjs`). The source shows while the layout runs (a second or two on first sight), then the drawing replaces it.
+
+[beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)'s own text renderer draws the rest: sequence, class and ER diagrams, flowcharts with subgraphs, and every diagram when `node` is not on `PATH`.
+
+A self-loop (`A --> A`) is drawn as a `↺` line inside its node.
+
+When no drawing fits, or the diagram can't be drawn at all (gantt, pie and other types), the source stays and a line under it says why:
+
+```
+*mermaid-view: this diagram needs 97 columns, the terminal has 80*
+```
 
 ## Requirements
 
-Claude Code 2.1.287 or later (mods).
+Claude Code 2.1.287 or later (mods). `node` on `PATH` for ELK layouts.
 
 ## Rebuild the renderer
 
-`hooks/mermaid.bundle.mjs` is beautiful-mermaid's text renderer bundled into one file, since a mod can import only files inside its own directory, each under 1 MiB.
+`hooks/mermaid.bundle.mjs` is beautiful-mermaid's parser and text renderer bundled into one file, since a mod can import only files inside its own directory, each under 1 MiB. `layout/elk.bundled.js` is elkjs, copied in by the same script.
 
 ```bash
 cd build && npm install && npm run bundle
@@ -24,4 +36,10 @@ cd build && npm install && npm run bundle
 
 ```bash
 claude plugin validate . && claude plugin test
+```
+
+The test sandbox can't run ELK, so the tests answer the layout call with layouts recorded in `tests/fixtures/layouts.mjs`. After changing the ELK graph or the test diagrams, record them again:
+
+```bash
+node tests/fixtures/record.mjs
 ```
