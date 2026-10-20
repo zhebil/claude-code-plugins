@@ -65,6 +65,26 @@
         "claude-code-plugin"
       ],
       "source": "./plugins/zed-open"
+    },
+    {
+      "name": "cmux-fork",
+      "description": "Adds a /fork-new command that forks the session into a new cmux tab.",
+      "author": {
+        "name": "Zhebil"
+      },
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/cmux-fork",
+      "repository": "https://github.com/zhebil/claude-code-plugins",
+      "license": "MIT",
+      "category": "productivity",
+      "tags": [
+        "mod",
+        "cmux",
+        "fork",
+        "session",
+        "command",
+        "claude-code-plugin"
+      ],
+      "source": "./plugins/cmux-fork"
     }
   ]
 }
