@@ -67,24 +67,26 @@
       "source": "./plugins/zed-open"
     },
     {
-      "name": "cmux-fork",
-      "description": "Adds a /fork-new command that forks the session into a new cmux tab.",
+      "name": "fork-tab",
+      "description": "Adds a /fork-new-tab command that forks the session into a new terminal tab (Warp, cmux or iTerm).",
       "author": {
         "name": "Zhebil"
       },
-      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/cmux-fork",
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/fork-tab",
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
       "tags": [
         "mod",
+        "warp",
         "cmux",
+        "iterm",
         "fork",
         "session",
         "command",
         "claude-code-plugin"
       ],
-      "source": "./plugins/cmux-fork"
+      "source": "./plugins/fork-tab"
     }
   ]
 }

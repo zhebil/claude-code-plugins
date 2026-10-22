@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "fork-tab",
+  "version": "0.2.0",
+  "description": "Adds a /fork-new-tab command that forks the session into a new terminal tab (Warp, cmux or iTerm).",
+  "author": {
+    "name": "Zhebil"
+  },
+  "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/fork-tab",
+  "repository": "https://github.com/zhebil/claude-code-plugins",
+  "license": "MIT",
+  "keywords": ["mod", "warp", "cmux", "iterm", "fork", "session", "command"]
+}

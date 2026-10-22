@@ -1,4 +1,0 @@
-{
-  "description": "Registers /fork-new and opens a fork of the session in a new cmux tab",
-  "modules": ["./register.js"]
-}

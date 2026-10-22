@@ -1,0 +1,4 @@
+{
+  "description": "Registers /fork-new-tab and opens a fork of the session in a new Warp, cmux or iTerm tab",
+  "modules": ["./register.js"]
+}
