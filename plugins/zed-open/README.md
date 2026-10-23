@@ -16,7 +16,9 @@ A path is linked only when it exists on disk, so ordinary words never turn into 
 - Paths in prose, in inline code (`` `src/main.rs:40` ``), and as the target of a relative markdown link (`[guide](docs/guide.md)`).
 - Not inside code fences, and not inside `https://` or other URLs.
 
-A plain click opens Zed, and selecting text still copies it. Links appear only in the fullscreen renderer (`/tui fullscreen`); in the classic renderer the terminal handles clicks itself. Reply blocks that hold a Mermaid diagram are left to [mermaid-view](../mermaid-view) and get no links.
+A plain click opens Zed. Dragging or double-clicking selects text without opening anything, and Claude Code copies the selection as usual.
+
+A click opens the path with `zed -e`, so Zed reuses a window instead of opening a new one. The session's project folder is passed along with a file, and with a folder inside the project. If a Zed window already has the project open, the file opens there, even when it lives outside the project. A folder that is already open is focused. Links appear only in the fullscreen renderer (`/tui fullscreen`); in the classic renderer the terminal handles clicks itself. Reply blocks that hold a Mermaid diagram are left to [mermaid-view](../mermaid-view) and get no links.
 
 ## Requirements
 
