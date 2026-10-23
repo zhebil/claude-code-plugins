@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { renderDiagrams } from '../hooks/register.js'
+import { renderDiagrams } from '../hooks/mermaid.js'
 import { REPLY, SHAPES, WIDE } from './fixtures/diagrams.mjs'
 import recorded from './fixtures/layouts.mjs'
 
@@ -9,7 +9,7 @@ const widest = (text: string) => Math.max(...text.split('\n').map((line) => [...
 
 function message(text: string, surface: 'terminal' | 'desktop' = 'terminal') {
   return {
-    plugin: 'mermaid-view',
+    plugin: 'reply-view',
     component: 'AssistantMessage',
     requestId: 'msg-1',
     surface,
@@ -65,9 +65,9 @@ test('wraps labels and turns the flow to fit a narrower terminal', async () => {
 test('says why it kept the source', async () => {
   const tooWide = await renderDiagrams(WIDE, 60, layoutAll)
   expect(tooWide).toStartWith(WIDE)
-  expect(tooWide).toContain('*mermaid-view: this diagram needs 97 columns, the terminal has 60*')
+  expect(tooWide).toContain('*reply-view: this diagram needs 97 columns, the terminal has 60*')
   const pie = '```mermaid\npie title Pets\n  "Dogs" : 386\n```'
-  expect(await renderDiagrams(pie, 120, layoutAll)).toBe(`${pie}\n*mermaid-view: could not draw this diagram*`)
+  expect(await renderDiagrams(pie, 120, layoutAll)).toBe(`${pie}\n*reply-view: could not draw this diagram*`)
 })
 
 test('draws shapes, edge styles, labels, cycles and self-loops', async () => {

@@ -1,12 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 import { candidates, hrefOf, linkify, placesOf, targetOf, zedArgs } from '../hooks/paths.js'
-import { clickAction } from '../hooks/register.js'
+import { clickAction } from '../hooks/click.js'
 
 const WHERE = { cwd: '/work/app/src', root: '/work/app', home: '/Users/me' }
 
 const reply = (text: string, isFirstOfReply = true) =>
   ({
-    plugin: 'zed-open',
+    plugin: 'reply-view',
     component: 'AssistantMessage',
     requestId: 'msg-1',
     surface: 'terminal',
@@ -110,10 +110,10 @@ test('a Ctrl-click on a relative path opens it in Zed at its line', async ($, on
   const runs: string[][] = []
   stubSession(on, { '/work/app/src/main.rs': 'file' }, runs)
   const ui = await $.ui.mount(reply('Fixed it in `src/main.rs:40`.'))
-  const md = await ui.find({ key: 'zed-open-msg-1' })
+  const md = await ui.find({ key: 'reply-view-msg-1' })
   expect(md?.props.text).toBe('Fixed it in [`src/main.rs:40`](file:///work/app/src/main.rs#L40).')
   expect(md?.props.pressableLinks).toEqual(['file:///work/app/src/main.rs#L40'])
-  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/src/main.rs#L40' } })
+  await ui.press({ key: 'reply-view-msg-1', link: { href: 'file:///work/app/src/main.rs#L40' } })
   expect(runs).toEqual([['zed', '-e', '/work/app', '/work/app/src/main.rs:40']])
 })
 
@@ -121,9 +121,9 @@ test('a Ctrl-click on a folder opens the folder, falling back to open -a Zed', a
   const runs: string[][] = []
   stubSession(on, { '/Users/me/desk/notes': 'dir' }, runs, { failZed: true })
   const ui = await $.ui.mount(reply('Drafts are in ~/desk/notes/ now.'))
-  const md = await ui.find({ key: 'zed-open-msg-1' })
+  const md = await ui.find({ key: 'reply-view-msg-1' })
   expect(md?.props.text).toBe('Drafts are in [\\~/desk/notes/](file:///Users/me/desk/notes/) now.')
-  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///Users/me/desk/notes/' } })
+  await ui.press({ key: 'reply-view-msg-1', link: { href: 'file:///Users/me/desk/notes/' } })
   expect(runs).toEqual([
     ['zed', '-e', '/Users/me/desk/notes'],
     ['open', '-a', 'Zed', '/Users/me/desk/notes'],
@@ -135,7 +135,7 @@ test('a plain click copies the full path instead of opening Zed', async ($, on) 
   const copies: string[] = []
   stubSession(on, { '/work/app/src/main.rs': 'file' }, runs, { modifiers: PLAIN_CLICK, copies })
   const ui = await $.ui.mount(reply('See src/main.rs:40.'))
-  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/src/main.rs#L40' } })
+  await ui.press({ key: 'reply-view-msg-1', link: { href: 'file:///work/app/src/main.rs#L40' } })
   expect(runs).toEqual([])
   expect(copies).toEqual(['/work/app/src/main.rs:40'])
 })
@@ -144,7 +144,7 @@ test('opens Zed when the modifier probe fails', async ($, on) => {
   const runs: string[][] = []
   stubSession(on, { '/work/app/README.md': 'file' }, runs, { modifiers: null })
   const ui = await $.ui.mount(reply('See README.md.'))
-  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/README.md' } })
+  await ui.press({ key: 'reply-view-msg-1', link: { href: 'file:///work/app/README.md' } })
   expect(runs).toEqual([['zed', '-e', '/work/app', '/work/app/README.md']])
 })
 
@@ -161,7 +161,7 @@ test('a Cmd-click opens nothing from the mod, since Warp opens the link', async 
   const copies: string[] = []
   stubSession(on, { '/work/app/README.md': 'file' }, runs, { modifiers: CMD_CLICK, copies })
   const ui = await $.ui.mount(reply('See README.md.'))
-  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/README.md' } })
+  await ui.press({ key: 'reply-view-msg-1', link: { href: 'file:///work/app/README.md' } })
   expect(runs).toEqual([])
   expect(copies).toEqual([])
 })
@@ -170,6 +170,6 @@ test('a reply with no existing path is left to Claude Code', async ($, on) => {
   stubSession(on, {}, [])
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn by Claude Code'] }))
   const ui = await $.ui.mount(reply('Nothing at src/missing.rs here.'))
-  expect(await ui.find({ key: 'zed-open-msg-1' })).toBeUndefined()
+  expect(await ui.find({ key: 'reply-view-msg-1' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
 })

@@ -78,12 +78,12 @@ function drawingsOf(source, layout) {
 }
 
 function replaceBlock(block, indent, arts, columns) {
-  if (!arts.length) return `${block}\n${indent}*mermaid-view: could not draw this diagram*`
+  if (!arts.length) return `${block}\n${indent}*reply-view: could not draw this diagram*`
   const limit = columns ? columns - MARGIN - indent.length : Infinity
   const art = arts.find((candidate) => widest(candidate) <= limit)
   if (art) return `${indent}\`\`\`text\n${art}\n${indent}\`\`\``
   const needed = Math.min(...arts.map(widest)) + MARGIN + indent.length
-  return `${block}\n${indent}*mermaid-view: this diagram needs ${needed} columns, the terminal has ${columns}*`
+  return `${block}\n${indent}*reply-view: this diagram needs ${needed} columns, the terminal has ${columns}*`
 }
 
 function replaceDrawn(text, columns) {
@@ -114,15 +114,12 @@ function elkLayout($) {
   }
 }
 
-export function register(on) {
-  on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => {
-    const text = e.props?.text
-    if (e.surface !== 'terminal' || typeof text !== 'string' || !text.includes('```mermaid')) return next(e)
-    const pending = sourcesOf(text).filter((source) => !drawings.has(source))
-    if (pending.length) {
-      const layout = elkLayout($)
-      Promise.all(pending.map((source) => drawingsOf(source, layout))).then(() => $.ui.invalidate('ui.render'))
-    }
-    return next({ ...e, props: { ...e.props, text: replaceDrawn(text, e.viewport?.columns) } })
-  })
+export function drawDiagrams($, text, columns) {
+  if (!text.includes('```mermaid')) return text
+  const pending = sourcesOf(text).filter((source) => !drawings.has(source))
+  if (pending.length) {
+    const layout = elkLayout($)
+    Promise.all(pending.map((source) => drawingsOf(source, layout))).then(() => $.ui.invalidate('ui.render'))
+  }
+  return replaceDrawn(text, columns)
 }

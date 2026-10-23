@@ -29,12 +29,12 @@
       "source": "./plugins/unfurl-context"
     },
     {
-      "name": "mermaid-view",
-      "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art in the terminal, laid out by ELK to fit its width.",
+      "name": "reply-view",
+      "description": "Draws Mermaid diagrams in Claude's replies as Unicode box art, makes file and folder paths open in Zed on Ctrl-click, and adds a /zed command.",
       "author": {
         "name": "Zhebil"
       },
-      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/mermaid-view",
+      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/reply-view",
       "repository": "https://github.com/zhebil/claude-code-plugins",
       "license": "MIT",
       "category": "productivity",
@@ -43,29 +43,13 @@
         "mermaid",
         "diagrams",
         "terminal",
-        "claude-code-plugin"
-      ],
-      "source": "./plugins/mermaid-view"
-    },
-    {
-      "name": "zed-open",
-      "description": "Adds a /zed command, and makes file and folder paths in Claude's replies open in Zed with one click.",
-      "author": {
-        "name": "Zhebil"
-      },
-      "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/zed-open",
-      "repository": "https://github.com/zhebil/claude-code-plugins",
-      "license": "MIT",
-      "category": "productivity",
-      "tags": [
-        "mod",
         "zed",
         "editor",
         "command",
         "links",
         "claude-code-plugin"
       ],
-      "source": "./plugins/zed-open"
+      "source": "./plugins/reply-view"
     },
     {
       "name": "fork-tab",

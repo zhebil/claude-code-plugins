@@ -1,4 +1,0 @@
-{
-  "description": "Registers /zed and opens paths in Claude's replies in Zed",
-  "modules": ["./register.js"]
-}

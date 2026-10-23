@@ -1,0 +1,4 @@
+{
+  "description": "Draws Mermaid diagrams in Claude's replies, links their file paths, and registers /zed",
+  "modules": ["./register.js"]
+}

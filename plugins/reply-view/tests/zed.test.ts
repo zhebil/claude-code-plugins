@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { target } from '../hooks/register.js'
+import { target } from '../hooks/zed.js'
 
 test('/zed opens the session directory and prints nothing', async ($, on) => {
   const runs: string[][] = []

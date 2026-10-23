@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs'
-import { renderDiagrams } from '../../hooks/register.js'
+import { renderDiagrams } from '../../hooks/mermaid.js'
 import { layoutAll } from '../../layout/elk-layout.mjs'
 import * as diagrams from './diagrams.mjs'
 

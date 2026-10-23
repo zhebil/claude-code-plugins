@@ -1,4 +1,0 @@
-{
-  "description": "Renders mermaid code blocks in assistant messages as text diagrams",
-  "modules": ["./register.js"]
-}
