@@ -5,12 +5,14 @@ const MAX_TEXT = 100_000
 const MAX_PRESSABLE = 256
 const MISS_TTL_MS = 3_000
 const BULLET = '⏺'
-const COMMAND_CLICK_WINDOW_S = 3
+const MODIFIER_CLICK_WINDOW_S = 3
 const MODIFIER_PROBE = [
   "ObjC.import('CoreGraphics')",
   'const s = $.kCGEventSourceStateCombinedSessionState',
+  'const flags = $.CGEventSourceFlagsState(s)',
   'JSON.stringify({',
-  '  isCommandHeld: ($.CGEventSourceFlagsState(s) & 0x100000) !== 0,',
+  '  isControlHeld: (flags & 0x40000) !== 0,',
+  '  isCommandHeld: (flags & 0x100000) !== 0,',
   '  sinceModifier: $.CGEventSourceSecondsSinceLastEventType(s, $.kCGEventFlagsChanged),',
   '  sinceMouseDown: $.CGEventSourceSecondsSinceLastEventType(s, $.kCGEventLeftMouseDown),',
   '})',
@@ -34,22 +36,26 @@ async function openInZed($, args, path) {
   $.ui.toast(`Could not open ${path} in Zed`)
 }
 
-export function isCommandClick({ isCommandHeld, sinceModifier, sinceMouseDown }) {
-  return isCommandHeld || (sinceModifier < sinceMouseDown && sinceMouseDown < COMMAND_CLICK_WINDOW_S)
+// Cmd is left alone because Warp opens the hyperlink itself on Cmd-click, with the default app.
+export function clickAction({ isControlHeld, isCommandHeld, sinceModifier, sinceMouseDown }) {
+  if (isControlHeld) return 'open'
+  if (isCommandHeld) return 'none'
+  const releasedSinceClick = sinceModifier < sinceMouseDown && sinceMouseDown < MODIFIER_CLICK_WINDOW_S
+  return releasedSinceClick ? 'open' : 'copy'
 }
 
-// The terminal mouse protocol cannot carry Cmd, so ask macOS whether Cmd was down around the click.
-async function wasCommandClick($) {
+// Warp hands a modified click to Claude Code as a plain press, so ask macOS which modifier was down.
+async function actionOfClick($) {
   try {
     const run = await $.process.run(['osascript', '-l', 'JavaScript', '-e', MODIFIER_PROBE], { timeoutMs: 2_000 })
-    if (run.exitCode === 0) return isCommandClick(JSON.parse(run.stdout))
+    if (run.exitCode === 0) return clickAction(JSON.parse(run.stdout))
   } catch {}
-  return true
+  return 'open'
 }
 
 async function copyPath($, text, surface) {
   const { isCopied } = await $.ui.copy({ text, surface })
-  $.ui.toast(isCopied ? `Copied ${text} (⌘-click opens it in Zed)` : `Could not copy ${text}`)
+  $.ui.toast(isCopied ? `Copied ${text} (Ctrl-click opens it in Zed)` : `Could not copy ${text}`)
 }
 
 async function kindOf($, path) {
@@ -132,8 +138,9 @@ export function register(on) {
               onLinkPress: async (link, press) => {
                 const opened = targetOf(link.href)
                 if (!opened) return
-                if (await wasCommandClick($)) await openInZed($, zedArgs(opened, await $.session.root()), opened.path)
-                else await copyPath($, opened.arg, press.surface)
+                const action = await actionOfClick($)
+                if (action === 'open') await openInZed($, zedArgs(opened, await $.session.root()), opened.path)
+                if (action === 'copy') await copyPath($, opened.arg, press.surface)
               },
             }),
           ],

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { candidates, hrefOf, linkify, placesOf, targetOf, zedArgs } from '../hooks/paths.js'
-import { isCommandClick } from '../hooks/register.js'
+import { clickAction } from '../hooks/register.js'
 
 const WHERE = { cwd: '/work/app/src', root: '/work/app', home: '/Users/me' }
 
@@ -77,13 +77,14 @@ test('linkify keeps the label as written and only links found paths', () => {
   expect(linkify('Under my\\_dir/a\\_b.md', found)).toBe('Under my\\_dir/a\\_b.md')
 })
 
-const CMD_CLICK = { isCommandHeld: true, sinceModifier: 9, sinceMouseDown: 0.4 }
-const PLAIN_CLICK = { isCommandHeld: false, sinceModifier: 9, sinceMouseDown: 0.4 }
+const CTRL_CLICK = { isControlHeld: true, isCommandHeld: false, sinceModifier: 9, sinceMouseDown: 0.4 }
+const CMD_CLICK = { isControlHeld: false, isCommandHeld: true, sinceModifier: 9, sinceMouseDown: 0.4 }
+const PLAIN_CLICK = { isControlHeld: false, isCommandHeld: false, sinceModifier: 9, sinceMouseDown: 0.4 }
 
 type Stub = { failZed?: boolean; modifiers?: object | null; copies?: string[] }
 
 function stubSession(on: any, existing: Record<string, 'file' | 'dir'>, runs: string[][], stub: Stub = {}) {
-  const { failZed = false, modifiers = CMD_CLICK, copies = [] } = stub
+  const { failZed = false, modifiers = CTRL_CLICK, copies = [] } = stub
   on('session.cwd', () => ({ value: '/work/app' }))
   on('session.root', () => ({ value: '/work/app' }))
   on('env.get', () => ({ value: '/Users/me' }))
@@ -105,7 +106,7 @@ function stubSession(on: any, existing: Record<string, 'file' | 'dir'>, runs: st
   on('ui.toast', () => ({ value: undefined }))
 }
 
-test('a Cmd-click on a relative path opens it in Zed at its line', async ($, on) => {
+test('a Ctrl-click on a relative path opens it in Zed at its line', async ($, on) => {
   const runs: string[][] = []
   stubSession(on, { '/work/app/src/main.rs': 'file' }, runs)
   const ui = await $.ui.mount(reply('Fixed it in `src/main.rs:40`.'))
@@ -116,7 +117,7 @@ test('a Cmd-click on a relative path opens it in Zed at its line', async ($, on)
   expect(runs).toEqual([['zed', '-e', '/work/app', '/work/app/src/main.rs:40']])
 })
 
-test('a Cmd-click on a folder opens the folder, falling back to open -a Zed', async ($, on) => {
+test('a Ctrl-click on a folder opens the folder, falling back to open -a Zed', async ($, on) => {
   const runs: string[][] = []
   stubSession(on, { '/Users/me/desk/notes': 'dir' }, runs, { failZed: true })
   const ui = await $.ui.mount(reply('Drafts are in ~/desk/notes/ now.'))
@@ -147,11 +148,22 @@ test('opens Zed when the modifier probe fails', async ($, on) => {
   expect(runs).toEqual([['zed', '-e', '/work/app', '/work/app/README.md']])
 })
 
-test('a Cmd-click is Cmd held now, or a modifier change after the mouse went down', () => {
-  expect(isCommandClick(CMD_CLICK)).toBe(true)
-  expect(isCommandClick(PLAIN_CLICK)).toBe(false)
-  expect(isCommandClick({ isCommandHeld: false, sinceModifier: 0.2, sinceMouseDown: 0.5 })).toBe(true)
-  expect(isCommandClick({ isCommandHeld: false, sinceModifier: 0.2, sinceMouseDown: 8 })).toBe(false)
+test('Ctrl opens, Cmd is left to Warp, a plain click copies', () => {
+  expect(clickAction(CTRL_CLICK)).toBe('open')
+  expect(clickAction(CMD_CLICK)).toBe('none')
+  expect(clickAction(PLAIN_CLICK)).toBe('copy')
+  expect(clickAction({ ...PLAIN_CLICK, sinceModifier: 0.2, sinceMouseDown: 0.5 })).toBe('open')
+  expect(clickAction({ ...PLAIN_CLICK, sinceModifier: 0.2, sinceMouseDown: 8 })).toBe('copy')
+})
+
+test('a Cmd-click opens nothing from the mod, since Warp opens the link', async ($, on) => {
+  const runs: string[][] = []
+  const copies: string[] = []
+  stubSession(on, { '/work/app/README.md': 'file' }, runs, { modifiers: CMD_CLICK, copies })
+  const ui = await $.ui.mount(reply('See README.md.'))
+  await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/README.md' } })
+  expect(runs).toEqual([])
+  expect(copies).toEqual([])
 })
 
 test('a reply with no existing path is left to Claude Code', async ($, on) => {

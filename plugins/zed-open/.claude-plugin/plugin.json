@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "zed-open",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Adds a /zed command, and makes file and folder paths in Claude's replies open in Zed with one click.",
   "author": {
     "name": "Zhebil"
