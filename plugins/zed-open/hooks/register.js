@@ -5,6 +5,16 @@ const MAX_TEXT = 100_000
 const MAX_PRESSABLE = 256
 const MISS_TTL_MS = 3_000
 const BULLET = '⏺'
+const COMMAND_CLICK_WINDOW_S = 3
+const MODIFIER_PROBE = [
+  "ObjC.import('CoreGraphics')",
+  'const s = $.kCGEventSourceStateCombinedSessionState',
+  'JSON.stringify({',
+  '  isCommandHeld: ($.CGEventSourceFlagsState(s) & 0x100000) !== 0,',
+  '  sinceModifier: $.CGEventSourceSecondsSinceLastEventType(s, $.kCGEventFlagsChanged),',
+  '  sinceMouseDown: $.CGEventSourceSecondsSinceLastEventType(s, $.kCGEventLeftMouseDown),',
+  '})',
+].join('\n')
 const kinds = new Map()
 let home
 
@@ -22,6 +32,24 @@ async function openInZed($, args, path) {
     } catch {}
   }
   $.ui.toast(`Could not open ${path} in Zed`)
+}
+
+export function isCommandClick({ isCommandHeld, sinceModifier, sinceMouseDown }) {
+  return isCommandHeld || (sinceModifier < sinceMouseDown && sinceMouseDown < COMMAND_CLICK_WINDOW_S)
+}
+
+// The terminal mouse protocol cannot carry Cmd, so ask macOS whether Cmd was down around the click.
+async function wasCommandClick($) {
+  try {
+    const run = await $.process.run(['osascript', '-l', 'JavaScript', '-e', MODIFIER_PROBE], { timeoutMs: 2_000 })
+    if (run.exitCode === 0) return isCommandClick(JSON.parse(run.stdout))
+  } catch {}
+  return true
+}
+
+async function copyPath($, text, surface) {
+  const { isCopied } = await $.ui.copy({ text, surface })
+  $.ui.toast(isCopied ? `Copied ${text} (⌘-click opens it in Zed)` : `Could not copy ${text}`)
 }
 
 async function kindOf($, path) {
@@ -101,9 +129,11 @@ export function register(on) {
               key: `zed-open-${String(e.requestId)}`,
               text: linked,
               pressableLinks: fileHrefs(linked),
-              onLinkPress: async (link) => {
+              onLinkPress: async (link, press) => {
                 const opened = targetOf(link.href)
-                if (opened) await openInZed($, zedArgs(opened, await $.session.root()), opened.path)
+                if (!opened) return
+                if (await wasCommandClick($)) await openInZed($, zedArgs(opened, await $.session.root()), opened.path)
+                else await copyPath($, opened.arg, press.surface)
               },
             }),
           ],
