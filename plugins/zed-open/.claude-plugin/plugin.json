@@ -1,13 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "zed-open",
-  "version": "0.1.0",
-  "description": "Adds a /zed command that opens the session's directory, or a path in it, in Zed.",
+  "version": "0.2.0",
+  "description": "Adds a /zed command, and makes file and folder paths in Claude's replies open in Zed with one click.",
   "author": {
     "name": "Zhebil"
   },
   "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/zed-open",
   "repository": "https://github.com/zhebil/claude-code-plugins",
   "license": "MIT",
-  "keywords": ["mod", "zed", "editor", "command"]
+  "keywords": ["mod", "zed", "editor", "command", "links"]
 }

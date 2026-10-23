@@ -49,7 +49,7 @@
     },
     {
       "name": "zed-open",
-      "description": "Adds a /zed command that opens the session's directory, or a path in it, in Zed.",
+      "description": "Adds a /zed command, and makes file and folder paths in Claude's replies open in Zed with one click.",
       "author": {
         "name": "Zhebil"
       },
@@ -62,6 +62,7 @@
         "zed",
         "editor",
         "command",
+        "links",
         "claude-code-plugin"
       ],
       "source": "./plugins/zed-open"
