@@ -1,4 +1,4 @@
-import { candidates, linkify, placesOf, targetOf } from './paths.js'
+import { candidates, linkify, placesOf, targetOf, zedArgs } from './paths.js'
 
 const MAX_PATHS = 200
 const MAX_TEXT = 100_000
@@ -14,8 +14,8 @@ export function target(cwd, args) {
   return path.startsWith('/') ? path : `${cwd}/${path}`
 }
 
-async function openInZed($, arg, path) {
-  for (const argv of [['zed', arg], ['open', '-a', 'Zed', path]]) {
+async function openInZed($, args, path) {
+  for (const argv of [['zed', ...args], ['open', '-a', 'Zed', path]]) {
     try {
       const run = await $.process.run(argv)
       if (run.exitCode === 0) return
@@ -75,7 +75,7 @@ export function register(on) {
 
   on('command.run', { command: 'zed' }, async ($, e) => {
     const path = target(await $.session.cwd(), e.args ?? '')
-    await openInZed($, path, path)
+    await openInZed($, [path], path)
     return {}
   })
 
@@ -103,7 +103,7 @@ export function register(on) {
               pressableLinks: fileHrefs(linked),
               onLinkPress: async (link) => {
                 const opened = targetOf(link.href)
-                if (opened) await openInZed($, opened.arg, opened.path)
+                if (opened) await openInZed($, zedArgs(opened, await $.session.root()), opened.path)
               },
             }),
           ],

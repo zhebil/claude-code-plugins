@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { candidates, hrefOf, linkify, placesOf, targetOf } from '../hooks/paths.js'
+import { candidates, hrefOf, linkify, placesOf, targetOf, zedArgs } from '../hooks/paths.js'
 
 const WHERE = { cwd: '/work/app/src', root: '/work/app', home: '/Users/me' }
 
@@ -46,11 +46,23 @@ test('resolves ~, absolute and relative paths against cwd, then the project root
 test('file hrefs round-trip with lines and folders', () => {
   const file = hrefOf({ path: '/a b/(x).md', isDir: false }, ':12:4')
   expect(file).toBe('file:///a%20b/%28x%29.md#L12:4')
-  expect(targetOf(file)).toEqual({ path: '/a b/(x).md', arg: '/a b/(x).md:12:4' })
+  expect(targetOf(file)).toEqual({ path: '/a b/(x).md', arg: '/a b/(x).md:12:4', isDir: false })
   const dir = hrefOf({ path: '/work/app', isDir: true }, ':3')
   expect(dir).toBe('file:///work/app/')
-  expect(targetOf(dir)).toEqual({ path: '/work/app', arg: '/work/app' })
+  expect(targetOf(dir)).toEqual({ path: '/work/app', arg: '/work/app', isDir: true })
   expect(targetOf('https://example.com')).toBeUndefined()
+})
+
+test('opens in the existing Zed window, led by the project folder so its window wins', () => {
+  const root = '/work/app'
+  const at = (path: string, isDir = false, arg = path) => zedArgs({ path, arg, isDir }, root)
+  expect(at('/work/app/src/main.rs', false, '/work/app/src/main.rs:3')).toEqual(['-e', root, '/work/app/src/main.rs:3'])
+  expect(at('/Users/me/desk/a.md')).toEqual(['-e', root, '/Users/me/desk/a.md'])
+  expect(at('/work/app/docs', true)).toEqual(['-e', root, '/work/app/docs'])
+  expect(at('/work/app', true)).toEqual(['-e', '/work/app'])
+  expect(at('/Users/me/desk', true)).toEqual(['-e', '/Users/me/desk'])
+  expect(at('/work/application', true)).toEqual(['-e', '/work/application'])
+  expect(zedArgs({ path: '/x.md', arg: '/x.md', isDir: false }, '')).toEqual(['-e', '/x.md'])
 })
 
 test('linkify keeps the label as written and only links found paths', () => {
@@ -85,7 +97,7 @@ test('a click on a relative path opens it in Zed at its line', async ($, on) => 
   expect(md?.props.text).toBe('Fixed it in [`src/main.rs:40`](file:///work/app/src/main.rs#L40).')
   expect(md?.props.pressableLinks).toEqual(['file:///work/app/src/main.rs#L40'])
   await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///work/app/src/main.rs#L40' } })
-  expect(runs).toEqual([['zed', '/work/app/src/main.rs:40']])
+  expect(runs).toEqual([['zed', '-e', '/work/app', '/work/app/src/main.rs:40']])
 })
 
 test('a click on a folder opens the folder, falling back to open -a Zed', async ($, on) => {
@@ -96,7 +108,7 @@ test('a click on a folder opens the folder, falling back to open -a Zed', async 
   expect(md?.props.text).toBe('Drafts are in [\\~/desk/notes/](file:///Users/me/desk/notes/) now.')
   await ui.press({ key: 'zed-open-msg-1', link: { href: 'file:///Users/me/desk/notes/' } })
   expect(runs).toEqual([
-    ['zed', '/Users/me/desk/notes'],
+    ['zed', '-e', '/Users/me/desk/notes'],
     ['open', '-a', 'Zed', '/Users/me/desk/notes'],
   ])
 })

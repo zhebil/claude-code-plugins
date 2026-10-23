@@ -92,7 +92,13 @@ export function targetOf(href) {
   const path = decoded(url.slice('file://'.length).replace(/(.)\/$/, '$1'))
   if (path === undefined) return undefined
   const line = /^L(\d+(?::\d+)?)$/.exec(fragment)?.[1]
-  return { path, arg: line ? `${path}:${line}` : path }
+  return { path, arg: line ? `${path}:${line}` : path, isDir: url.endsWith('/') }
+}
+
+export function zedArgs({ path, arg, isDir }, root) {
+  const isInside = Boolean(root) && path.startsWith(`${root}/`)
+  const withRoot = Boolean(root) && path !== root && (!isDir || isInside)
+  return ['-e', ...(withRoot ? [root] : []), arg]
 }
 
 const escapeLabel = (text) => text.replace(/[\\`*_[\]~<]/g, '\\$&')
