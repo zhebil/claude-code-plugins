@@ -20,6 +20,15 @@ A session that does publish pays the ~12k once, on the turn that loads the tool.
 
 Background: [anthropics/claude-code#91395](https://github.com/anthropics/claude-code/issues/91395) and [#102898](https://github.com/anthropics/claude-code/issues/102898).
 
+## Install
+
+```bash
+claude plugin marketplace add zhebil/claude-code-plugins
+claude plugin install defer-artifact@zhebil-tools
+```
+
+Then restart Claude Code or run `/reload-plugins`. To check it works, start a new session and run `/context`: System tools should drop by about 12k.
+
 ## Requirements
 
 Claude Code 2.1.287 or later (mods), signed in to a claude.ai account that has artifacts.
