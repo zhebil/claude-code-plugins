@@ -1,0 +1,4 @@
+{
+  "description": "Marks the Artifact tool as deferred, so it loads through tool search",
+  "modules": ["./register.js"]
+}

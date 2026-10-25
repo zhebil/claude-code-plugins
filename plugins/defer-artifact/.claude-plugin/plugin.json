@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "defer-artifact",
+  "version": "0.1.0",
+  "description": "Puts the Artifact tool behind tool search, so its ~12k-token schema loads only in sessions that publish an artifact.",
+  "author": {
+    "name": "Zhebil"
+  },
+  "homepage": "https://github.com/zhebil/claude-code-plugins/tree/main/plugins/defer-artifact",
+  "repository": "https://github.com/zhebil/claude-code-plugins",
+  "license": "MIT",
+  "keywords": ["mod", "artifact", "context", "tokens", "tool-search", "deferred"]
+}
